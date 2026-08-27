@@ -123,8 +123,8 @@ services:
       test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
       interval: 15s
       timeout: 3s
-      retries: 5
-      start_period: 15s
+      retries: 12
+      start_period: 120s   # first boot pulls + runs loader-zero migrations; cold start is slow
     labels:
       caddy: "http://app-1.rig.internal"
       caddy.0_handle_path: "/tenants/*"
