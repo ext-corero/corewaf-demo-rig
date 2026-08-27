@@ -40,7 +40,7 @@ volumes:
 
 services:
   loki:
-    image: grafana/loki:3.1.1
+    image: ${LOKI_IMAGE}
     container_name: rig2-loki
     logging: *x-default-logging
     restart: unless-stopped
@@ -59,7 +59,7 @@ services:
       start_period: 30s
 
   mimir:
-    image: grafana/mimir:2.13.0
+    image: ${MIMIR_IMAGE}
     container_name: rig2-mimir
     logging: *x-default-logging
     restart: unless-stopped
@@ -75,7 +75,7 @@ services:
     # probeable at :9009/ready (used by the future obs integration).
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: ${ALERTMANAGER_IMAGE}
     container_name: rig2-alertmanager
     logging: *x-default-logging
     restart: unless-stopped
@@ -90,7 +90,7 @@ services:
       - alertmanager-data:/alertmanager
 
   grafana:
-    image: grafana/grafana:11.2.0
+    image: ${GRAFANA_IMAGE}
     container_name: rig2-grafana
     logging: *x-default-logging
     restart: unless-stopped
@@ -122,8 +122,7 @@ services:
   # proxy can re-originate kit traffic as https:// to them. The clear-HTTP path
   # is preserved on the original ports.
   caddy-obs:
-    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
-    image: corewaf/caddy-internal:rig
+    image: ${RIG_REGISTRY}/${CADDY_INTERNAL_IMAGE}:${CADDY_INTERNAL_TAG}
     container_name: rig2-caddy-obs
     logging: *x-default-logging
     restart: unless-stopped

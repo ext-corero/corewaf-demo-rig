@@ -29,7 +29,7 @@ volumes:
 
 services:
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE}
     container_name: rig2-redis
     logging: *x-default-logging
     restart: unless-stopped
@@ -42,8 +42,7 @@ services:
       retries: 5
 
   coredns:
-    build: { context: ../../waf/dns-bridge/coredns, dockerfile: Dockerfile }
-    image: corewaf/waf-coredns-redis:rig
+    image: ${RIG_REGISTRY}/${COREDNS_REDIS_IMAGE}:${COREDNS_REDIS_TAG}
     container_name: rig2-coredns
     logging: *x-default-logging
     restart: unless-stopped
@@ -63,15 +62,7 @@ services:
       corewaf.io/instance: "${NODE_NAME}"
 
   dns-bridge:
-    build:
-      context: ../../waf/dns-bridge
-      dockerfile: Dockerfile
-      # component-commons is a co-located shared-code FOLDER the Dockerfile pulls
-      # via `COPY --from=commons`. Supply it as a BuildKit named context so the
-      # path dep resolves with no registry/creds (mani checks out the whole tree).
-      additional_contexts:
-        commons: ../../waf/component-commons
-    image: corewaf/waf-dns-bridge:rig
+    image: ${RIG_REGISTRY}/${DNS_BRIDGE_IMAGE}:${DNS_BRIDGE_TAG}
     container_name: rig2-dns-bridge
     logging: *x-default-logging
     restart: unless-stopped     # self-assembly: retry until app VM is reachable

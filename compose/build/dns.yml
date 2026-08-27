@@ -1,0 +1,21 @@
+# compose/build/dns.yml — RIG_MODE=source override: build the rig images from a
+# sibling corewaf-workspace checkout instead of pulling the pins in images.env.
+# Used by vmlab.sh as:  docker compose -f compose/dns.yml -f compose/build/dns.yml up --build
+# RIG_SRC is the workspace root as seen inside the VM (virtiofs, source mode only).
+
+services:
+  coredns:
+    build:
+      context: ${RIG_SRC:-/opt/corewaf-workspace}/waf/dns-bridge/coredns
+      dockerfile: Dockerfile
+    image: corewaf/waf-coredns-redis:rig
+  dns-bridge:
+    build:
+      context: ${RIG_SRC:-/opt/corewaf-workspace}/waf/dns-bridge
+      dockerfile: Dockerfile
+      # component-commons is a co-located shared-code FOLDER the Dockerfile pulls
+      # via `COPY --from=commons`. Supply it as a BuildKit named context so the
+      # path dep resolves with no registry/creds (mani checks out the whole tree).
+      additional_contexts:
+        commons: ${RIG_SRC:-/opt/corewaf-workspace}/waf/component-commons
+    image: corewaf/waf-dns-bridge:rig

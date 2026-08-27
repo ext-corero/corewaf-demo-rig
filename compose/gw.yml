@@ -46,7 +46,7 @@ services:
   wg-keypair-gen:
     # Reuse the gateway image (already built, ships `wg`) instead of `alpine` +
     # `apk add` — no network needed, so a mirror hiccup can't block bring-up.
-    image: corewaf/waf-tunnel-gateway:rig
+    image: ${RIG_REGISTRY}/${TUNNEL_GW_IMAGE}:${TUNNEL_GW_TAG}
     container_name: rig2-wg-keypair-gen
     logging: *x-default-logging
     restart: on-failure
@@ -65,8 +65,7 @@ services:
     networks: [ edge ]
 
   tunnel-gateway:
-    build: { context: ../../waf/tunnel-gateway, dockerfile: Dockerfile }
-    image: corewaf/waf-tunnel-gateway:rig
+    image: ${RIG_REGISTRY}/${TUNNEL_GW_IMAGE}:${TUNNEL_GW_TAG}
     container_name: rig2-tunnel-gateway
     logging: *x-default-logging
     restart: unless-stopped       # self-assembly: retry until app-1 API/step-ca reachable
@@ -182,8 +181,7 @@ services:
     # caddy-l4). Same docker-proxy + Caddyfile-fragment mechanism; the l4
     # plugin is available for the single-:443 SNI folding. ACME-from-stepca and
     # the verify_if_given path ACLs are unchanged (see Caddyfile.edge.fragment).
-    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
-    image: corewaf/caddy-internal:rig
+    image: ${RIG_REGISTRY}/${CADDY_INTERNAL_IMAGE}:${CADDY_INTERNAL_TAG}
     container_name: rig2-tunnel-caddy-edge
     hostname: ${HOSTNAME}    # the node's own name (set on the VM, read by compose)
     logging: *x-default-logging

@@ -32,7 +32,7 @@ volumes:
 
 services:
   etcd:
-    image: gcr.io/etcd-development/etcd:v3.5.13
+    image: ${ETCD_IMAGE}
     container_name: rig2-etcd
     hostname: etcd
     logging: *x-default-logging
@@ -59,7 +59,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE}
     container_name: rig2-redis
     logging: *x-default-logging
     restart: unless-stopped
@@ -77,8 +77,7 @@ services:
   # are demo data, loaded on demand.
 
   waf-api:
-    build: { context: ../../waf/api, dockerfile: Dockerfile }
-    image: corewaf/waf-api:rig
+    image: ${RIG_REGISTRY}/${WAF_API_IMAGE}:${WAF_API_TAG}
     container_name: rig2-waf-api
     hostname: api-server
     logging: *x-default-logging
@@ -148,8 +147,7 @@ services:
       caddy.8_handle.reverse_proxy: "{{upstreams http 8008}}"
 
   waf-gui:
-    build: { context: ../../waf/gui, dockerfile: Dockerfile }
-    image: corewaf/waf-gui:rig
+    image: ${RIG_REGISTRY}/${WAF_GUI_IMAGE}:${WAF_GUI_TAG}
     container_name: rig2-waf-gui
     hostname: web-ui
     logging: *x-default-logging
@@ -175,8 +173,7 @@ services:
     # caddy-l4) — same label-driven docker-proxy mechanism, just our build.
     # The entrypoint's CA-trust phases stay dormant (TRUST_CA_URLS unset; the
     # rig skips the full HTTPS mesh), so this is HTTP-only ingress as before.
-    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
-    image: corewaf/caddy-internal:rig
+    image: ${RIG_REGISTRY}/${CADDY_INTERNAL_IMAGE}:${CADDY_INTERNAL_TAG}
     container_name: rig2-caddy
     logging: *x-default-logging
     restart: unless-stopped
@@ -193,12 +190,12 @@ services:
   # One-shot init: `step ca init --root/--key` against the mapped rig root
   # mints an intermediate under it. Idempotent (skips if ca.json exists).
   stepca-init:
-    image: smallstep/step-cli:0.27.5
+    image: ${STEP_CLI_IMAGE}
     container_name: rig2-stepca-init
     logging: *x-default-logging
     user: "0:0"
     environment:
-      STEPCA_PASSWORD: rig-stepca
+      STEPCA_PASSWORD: ${STEPCA_PASSWORD:?set by ca-init.sh (.v2/shared-secrets/rig-secrets.env)}
     volumes:
       - stepca-data:/home/step
       - /opt/rig-ca:/rigca:ro
@@ -207,7 +204,7 @@ services:
     networks: [ app ]
 
   stepca:
-    image: smallstep/step-ca:0.27.5
+    image: ${STEP_CA_IMAGE}
     container_name: rig2-stepca
     hostname: stepca
     logging: *x-default-logging
@@ -236,7 +233,7 @@ services:
   # provisioner.jwk / root.crt / fingerprint to the SHARED host dir so the gw
   # VMs (which mount the same /opt/shared-secrets) can read them.
   stepca-bootstrap:
-    image: smallstep/step-cli:0.27.5
+    image: ${STEP_CLI_IMAGE}
     container_name: rig2-stepca-bootstrap
     logging: *x-default-logging
     restart: on-failure
@@ -245,8 +242,8 @@ services:
       stepca: { condition: service_healthy }
     environment:
       STEPCA_URL: https://stepca:9000
-      STEPCA_ADMIN_PASSWORD: rig-stepca
-      STEPCA_PROVISIONER_PASSWORD: rig-tunnel-gateway-provisioner
+      STEPCA_ADMIN_PASSWORD: ${STEPCA_PASSWORD:?set by ca-init.sh}
+      STEPCA_PROVISIONER_PASSWORD: ${STEPCA_PROVISIONER_PASSWORD:?set by ca-init.sh}
       STEPPATH: /tmp/step
       OUT_DIR: /secrets/tunnel-gw
     volumes:

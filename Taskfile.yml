@@ -22,9 +22,14 @@ tasks:
   # v2 rig — infra VMs
   # =====================================================================
   up:
-    desc: Bring up the v2 rig (network + app/dns/gw/obs VMs + stacks; starts shut-off VMs)
+    desc: 'Bring up the rig (CA, network, VMs, stacks). Images pulled from images.env; RIG_MODE=source builds from ../ workspace'
     cmds:
       - bash up.sh
+
+  ca:init:
+    desc: Create the rig root CA + runtime secrets if missing (.v2/, gitignored; up runs this)
+    cmds:
+      - bash ca-init.sh
 
   down:
     desc: 'Tear down the v2 rig VMs (DOWN=--net to also drop the network)'

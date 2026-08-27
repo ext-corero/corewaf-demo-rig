@@ -149,15 +149,16 @@ $(printf '%b' "$resolvers" | sed 's/^/      /')
     permissions: '0644'
     content: |
 $(printf '%b' "$bootstrap" | sed 's/^/      /')
+$(registry_auth_files)
 runcmd:
   - modprobe virtiofs || true
   - modprobe 9pnet_virtio || true
   - mkdir -p $RIG_WORKSPACE_MOUNT /opt/v2 /opt/shared-secrets /opt/rig-ca
-  - mount -t virtiofs workspace $RIG_WORKSPACE_MOUNT || true
+  - mount -t virtiofs workspace $RIG_WORKSPACE_MOUNT 2>/dev/null || rmdir $RIG_WORKSPACE_MOUNT || true
   - mount -t virtiofs v2cfg /opt/v2 || true
   - mount -t virtiofs secrets /opt/shared-secrets || true
   - mount -t virtiofs rigca /opt/rig-ca || true
-  - sh -c 'for t in "workspace $RIG_WORKSPACE_MOUNT" "v2cfg /opt/v2" "secrets /opt/shared-secrets" "rigca /opt/rig-ca"; do echo "\$t virtiofs defaults 0 0" >> /etc/fstab; done'
+  - sh -c 'for t in "v2cfg /opt/v2" "secrets /opt/shared-secrets" "rigca /opt/rig-ca"; do echo "\$t virtiofs defaults 0 0" >> /etc/fstab; done; [ -d $RIG_WORKSPACE_MOUNT ] && echo "workspace $RIG_WORKSPACE_MOUNT virtiofs defaults,nofail 0 0" >> /etc/fstab || true'
   - mkdir -p /usr/local/share/ca-certificates
   - cp /opt/rig-ca/root_ca.crt /usr/local/share/ca-certificates/corewaf-rig-root.crt
   - update-ca-certificates || true
@@ -172,6 +173,32 @@ local-hostname: $short
 EOF
     xorriso -as mkisofs -quiet -V cidata -o "$SEEDS/$name-seed.iso" -J -r \
         -graft-points "user-data=$SEEDS/$name-user-data" "meta-data=$SEEDS/$name-meta-data"
+    chmod 600 "$SEEDS/$name-user-data" "$SEEDS/$name-seed.iso"
+}
+
+# ---- registry auth for the VM's docker ---------------------------------------
+# The rig pulls its images from the CoreWAF registry (ECR, see images.env). The
+# host mints a registry token with the operator's AWS identity (AWS_PROFILE /
+# AWS_ACCESS_KEY_ID..., any user in group corewaf-ecr-pull) and cloud-init drops
+# it into /root/.docker/config.json — root is what `doas docker compose` runs as.
+# ECR tokens last 12h; `stack` pulls right after boot, so that is enough today.
+# (The base image will carry docker-credential-ecr-login + the creds themselves
+# so long-running VMs can re-pull — follow-up.) RIG_MODE=source needs none of it.
+registry_auth_files() {
+    [[ "${RIG_MODE:-pull}" == source ]] && return 0
+    local host; host="$(sed -n 's#^RIG_REGISTRY=\([^/]*\)/.*#\1#p' "$HERE/images.env")"
+    [[ -n "$host" ]] || die "images.env: RIG_REGISTRY missing"
+    local region; region="$(echo "$host" | sed -n 's#.*\.ecr\.\([a-z0-9-]*\)\.amazonaws\.com#\1#p')"
+    local tok
+    tok="$(aws ecr get-login-password --region "$region" 2>/dev/null)" \
+        || die "cannot mint a registry token for $host — set AWS_PROFILE (or AWS_ACCESS_KEY_ID/SECRET) to a CoreWAF registry user (group corewaf-ecr-pull), or use RIG_MODE=source"
+    local auth; auth="$(printf 'AWS:%s' "$tok" | base64 -w0)"
+    cat <<EOF2
+  - path: /root/.docker/config.json
+    permissions: '0600'
+    content: |
+      {"auths": {"$host": {"auth": "$auth"}}}
+EOF2
 }
 
 # ---- create a VM -----------------------------------------------------------
@@ -194,6 +221,14 @@ cmd_create() {
 
     qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMG" "$disk" "$DISK_SIZE"
     write_seed "$name"
+    # The full workspace is mapped in ONLY for RIG_MODE=source (builds from source).
+    # In the default pull mode the VM sees just /opt/v2 (this repo), the shared
+    # secrets dir and the rig CA — no dependency on a corewaf-workspace checkout.
+    local WS_FS=()
+    if [[ "${RIG_MODE:-pull}" == source ]]; then
+        [[ -d "$WORKSPACE/waf" ]] || die "RIG_MODE=source needs a corewaf-workspace checkout at $WORKSPACE"
+        WS_FS=(--filesystem "driver.type=virtiofs,source.dir=$WORKSPACE,target.dir=workspace,readonly=on")
+    fi
 
     /usr/bin/python3 /usr/bin/virt-install \
         --name "$name" \
@@ -203,7 +238,7 @@ cmd_create() {
         --disk "path=$SEEDS/$name-seed.iso,device=cdrom" \
         --os-variant alpinelinux3.20 \
         --network "network=$RIG_NET_NAME,model=virtio,mac=$R_MAC" \
-        --filesystem "driver.type=virtiofs,source.dir=$WORKSPACE,target.dir=workspace,readonly=on" \
+        "${WS_FS[@]}" \
         --filesystem "driver.type=virtiofs,source.dir=$HERE,target.dir=v2cfg,readonly=on" \
         --filesystem "driver.type=virtiofs,source.dir=$SHARED_SECRETS,target.dir=secrets" \
         --filesystem "driver.type=virtiofs,source.dir=$RIG_DIR/.v2/ca,target.dir=rigca,readonly=on" \
@@ -224,13 +259,21 @@ cmd_stack() {
     # NO per-instance identity is injected here. The booted node is the source
     # of truth: compose reads ${HOSTNAME} (the node's own hostname, evaluated on
     # the VM) for the container hostname, and `env_file: /etc/corewaf-bootstrap`
-    # (written by cloud-init) for $FQDN / $NODE_NAME / per-gw $IPAM_CIDR. So this
-    # is just `docker compose up` — same command on every node.
+    # (written by cloud-init) for $FQDN / $NODE_NAME / per-gw $IPAM_CIDR.
+    #
+    # Default: images are PULLED from the registry pinned in images.env (the VM
+    # authenticates with the docker auth cloud-init wrote — see write_seed).
+    # RIG_MODE=source: build from the sibling corewaf-workspace mapped at
+    # $RIG_WORKSPACE_MOUNT via compose/build/<role>.yml (developer path).
+    local files="-f compose/$R_ROLE.yml" build=""
+    if [[ "${RIG_MODE:-pull}" == source ]]; then
+        files="$files -f compose/build/$R_ROLE.yml"; build="--build"
+    fi
     ssh "${ssh_opts[@]}" "alpine@$R_IP" \
         "doas rc-service docker start >/dev/null 2>&1 || true; \
-         doas sh -c 'cd $RIG_WORKSPACE_MOUNT/demo-rig && \
-           set -a; . /etc/corewaf-bootstrap; set +a; \
-           HOSTNAME=\"\$(hostname)\" docker compose --env-file inventory.env -f compose/$R_ROLE.yml up --build -d'"
+         doas sh -c 'cd /opt/v2 && \
+           set -a; . /etc/corewaf-bootstrap; [ -f /opt/shared-secrets/rig-secrets.env ] && . /opt/shared-secrets/rig-secrets.env; set +a; \
+           HOSTNAME=\"\$(hostname)\" RIG_SRC=$RIG_WORKSPACE_MOUNT docker compose --env-file inventory.env --env-file images.env $files up $build -d'"
 }
 
 cmd_exec() { resolve_role "$1" "${2:-}"; shift; [[ "${1:-}" =~ ^[0-9]+$ ]] && shift || true

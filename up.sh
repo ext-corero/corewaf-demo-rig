@@ -35,6 +35,9 @@ ensure_masquerade() {
     fi
 }
 
+echo "== ca + secrets =="
+"$HERE/ca-init.sh"
+
 echo "== network =="
 "$VMLAB" net-up
 ensure_masquerade

@@ -1,0 +1,18 @@
+# compose/build/gw.yml — RIG_MODE=source override: build the rig images from a
+# sibling corewaf-workspace checkout instead of pulling the pins in images.env.
+# Used by vmlab.sh as:  docker compose -f compose/gw.yml -f compose/build/gw.yml up --build
+# RIG_SRC is the workspace root as seen inside the VM (virtiofs, source mode only).
+
+services:
+  tunnel-gateway:
+    build:
+      context: ${RIG_SRC:-/opt/corewaf-workspace}/waf/tunnel-gateway
+      dockerfile: Dockerfile
+    image: corewaf/waf-tunnel-gateway:rig
+  tunnel-caddy-edge:
+    build:
+      context: ${RIG_SRC:-/opt/corewaf-workspace}/waf/system-loader/caddy-internal
+      dockerfile: Dockerfile
+    image: corewaf/caddy-internal:rig
+  wg-keypair-gen:
+    image: corewaf/waf-tunnel-gateway:rig
