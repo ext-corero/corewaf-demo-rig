@@ -1,0 +1,256 @@
+---
+# demo rig — APP stack (runs on rig2-app-1).
+#
+# The control-plane: etcd + redis + the 8-service waf-api + waf-gui + the
+# ingress Caddy + the one-shot tenant bootstrap. Intra-stack wiring is plain
+# docker-DNS (etcd, api-server, redis) exactly as the single-host rig — what
+# changes for v2 is only the *externally visible* names: the ingress answers
+# on app-1.rig.internal (API) and gui-1.rig.internal (GUI), both resolved by
+# the dns VMs. step-ca + the gateway/edge live in their own stacks.
+#
+# Run (via vmlab.sh stack app, from <repo root>):
+#   docker compose --env-file inventory.env -f compose/app.yml up --build -d
+#
+# Build contexts are relative to THIS file's dir (compose/): ../../../ is the
+# workspace root, which is virtiofs-mapped at /opt/corewaf-workspace in-VM.
+
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  app:
+    name: app-rig
+    driver: bridge
+
+volumes:
+  etcd-data:        # ephemeral in-VM state — wiped on `down -v`, re-bootstrapped
+  redis-data:
+  waf-api-state:
+  caddy_data:
+  stepca-data:      # step-ca home (intermediate under the mapped rig root)
+
+services:
+  etcd:
+    image: gcr.io/etcd-development/etcd:v3.5.13
+    container_name: rig2-etcd
+    hostname: etcd
+    logging: *x-default-logging
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=etcd-cluster
+      - --auto-compaction-retention=1
+      - --log-level=info
+    volumes: [ "etcd-data:/etcd-data" ]
+    networks: [ app ]
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: rig2-redis
+    logging: *x-default-logging
+    restart: unless-stopped
+    networks: [ app ]
+    volumes: [ "redis-data:/data" ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # No tenant-bootstrap container: loader-zero is waf-api's own lifespan
+  # migration (tenant_api 2026_05_14_000 creates the system-owner apex;
+  # 2026_05_14_001 backfills its service identities). Carriers + leaf tenants
+  # are demo data, loaded on demand.
+
+  waf-api:
+    build: { context: ../../waf/api, dockerfile: Dockerfile }
+    image: corewaf/waf-api:rig
+    container_name: rig2-waf-api
+    hostname: api-server
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      etcd: { condition: service_healthy }
+    environment:
+      ETCD_HOST: etcd
+      ETCD_PORT: "2379"
+      ALLOWED_NAMESPACES: '["corero-core","corero-system"]'
+      DEFAULT_NAMESPACE: corero-core
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      DEBUG_MODE: "false"
+      # CORS origin = the GUI's external name on the routed LAN.
+      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://localhost:5173"]'
+      # NOTE: no PROVISIONING_GATEWAY_URL. The token's gw claim is resolved by
+      # the minter from the tenant→carrier→apex endpoint chain
+      # (resolved_endpoints["zeroTrustGateway"], tokens.py) — the tenant +
+      # ownership chain is the ONLY thing that assigns a kit's gateway. The old
+      # gw-1 hardcode was a stale fallback from a single-gateway era; removed.
+      PROVISIONING_SIGNING_KEY_PATH: /var/lib/waf-api/envelope.jwk
+      # Intra-container service modules (Circus) — unchanged loopback wiring.
+      CADDY_API_PROVISIONING_URL: http://localhost:8009
+      CADDY_API_DOMAIN_API_URL: http://localhost:8002
+      CADDY_API_DOMAIN_SCOPE_ORG_ID: corero-system-owner
+      PROVISIONING_API_DOMAIN_API_URL: http://localhost:8002
+      PROVISIONING_API_DOMAIN_SCOPE_ORG_ID: corero-system-owner
+      # Trust the rig root (mapped in below) for outbound TLS to bridges/edge.
+      SSL_CERT_FILE: /etc/operator-ca/root.crt
+    volumes:
+      - waf-api-state:/var/lib/waf-api
+      # Rig root CA (virtiofs-mapped on the host at /opt/rig-ca) — read-only.
+      - /opt/rig-ca/root_ca.crt:/etc/operator-ca/root.crt:ro
+    networks: [ app ]
+    # NOTE: do NOT set `dns:` here. Docker's embedded resolver (127.0.0.11)
+    # answers intra-stack service names (etcd, redis) authoritatively and
+    # forwards everything else (rig.internal, external) to the VM's
+    # resolv.conf — i.e. the dns VMs + bootstrap fallback. Overriding `dns:`
+    # injects ndots:0 + the raw upstreams into the container, which the
+    # etcd3 grpc/c-ares resolver chokes on when a dns VM is briefly down.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    labels:
+      caddy: "http://app-1.rig.internal"
+      caddy.0_handle_path: "/tenants/*"
+      caddy.0_handle_path.reverse_proxy: "{{upstreams http 8001}}"
+      caddy.1_handle_path: "/domains/*"
+      caddy.1_handle_path.reverse_proxy: "{{upstreams http 8002}}"
+      caddy.2_handle_path: "/validation/*"
+      caddy.2_handle_path.reverse_proxy: "{{upstreams http 8004}}"
+      caddy.3_handle_path: "/secrets/*"
+      caddy.3_handle_path.reverse_proxy: "{{upstreams http 8005}}"
+      caddy.4_handle_path: "/policy/*"
+      caddy.4_handle_path.reverse_proxy: "{{upstreams http 8006}}"
+      caddy.5_handle_path: "/events/*"
+      caddy.5_handle_path.reverse_proxy: "{{upstreams http 8007}}"
+      caddy.6_handle_path: "/caddys/*"
+      caddy.6_handle_path.reverse_proxy: "{{upstreams http 8003}}"
+      caddy.7_handle_path: "/provisioning/*"
+      caddy.7_handle_path.reverse_proxy: "{{upstreams http 8009}}"
+      caddy.8_handle: "/api/v1/authorization/*"
+      caddy.8_handle.reverse_proxy: "{{upstreams http 8008}}"
+
+  waf-gui:
+    build: { context: ../../waf/gui, dockerfile: Dockerfile }
+    image: corewaf/waf-gui:rig
+    container_name: rig2-waf-gui
+    hostname: web-ui
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      waf-api: { condition: service_healthy }
+    environment:
+      PUBLIC_API_HOST: "app-1.rig.internal:8080"
+      PUBLIC_API_SCHEME: http
+    networks: [ app ]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    labels:
+      caddy: "http://gui-1.rig.internal"
+      caddy.reverse_proxy: "{{upstreams http 3000}}"
+
+  caddy:
+    # Project caddy image (xcaddy: caddy 2.11.3 + caddy-docker-proxy v2.12 +
+    # caddy-l4) — same label-driven docker-proxy mechanism, just our build.
+    # The entrypoint's CA-trust phases stay dormant (TRUST_CA_URLS unset; the
+    # rig skips the full HTTPS mesh), so this is HTTP-only ingress as before.
+    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
+    image: corewaf/caddy-internal:rig
+    container_name: rig2-caddy
+    logging: *x-default-logging
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      CADDY_INGRESS_NETWORKS: app-rig
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy_data:/data
+    networks: [ app ]
+
+  # ── step-ca (chains to the pre-created rig root) ───────────────────
+  # One-shot init: `step ca init --root/--key` against the mapped rig root
+  # mints an intermediate under it. Idempotent (skips if ca.json exists).
+  stepca-init:
+    image: smallstep/step-cli:0.27.5
+    container_name: rig2-stepca-init
+    logging: *x-default-logging
+    user: "0:0"
+    environment:
+      STEPCA_PASSWORD: rig-stepca
+    volumes:
+      - stepca-data:/home/step
+      - /opt/rig-ca:/rigca:ro
+      - ../config/stepca-init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    networks: [ app ]
+
+  stepca:
+    image: smallstep/step-ca:0.27.5
+    container_name: rig2-stepca
+    hostname: stepca
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      stepca-init: { condition: service_completed_successfully }
+    environment:
+      # Config already exists (from stepca-init) -> the entrypoint runs
+      # `step-ca --password-file $PWDPATH $CONFIGPATH`, so BOTH must be set
+      # (we bypass the DOCKER_STEPCA_INIT_* path that would otherwise set them).
+      PWDPATH: /home/step/secrets/password
+      CONFIGPATH: /home/step/config/ca.json
+    ports:
+      - "9000:9000"           # reachable cross-VM at app-1.rig.internal:9000
+    volumes:
+      - stepca-data:/home/step
+    networks: [ app ]
+    healthcheck:
+      test: ["CMD", "curl", "-skf", "https://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 8s
+
+  # Registers the tunnel-gateway-service JWK + ACME provisioners and writes
+  # provisioner.jwk / root.crt / fingerprint to the SHARED host dir so the gw
+  # VMs (which mount the same /opt/shared-secrets) can read them.
+  stepca-bootstrap:
+    image: smallstep/step-cli:0.27.5
+    container_name: rig2-stepca-bootstrap
+    logging: *x-default-logging
+    restart: on-failure
+    user: "0:0"
+    depends_on:
+      stepca: { condition: service_healthy }
+    environment:
+      STEPCA_URL: https://stepca:9000
+      STEPCA_ADMIN_PASSWORD: rig-stepca
+      STEPCA_PROVISIONER_PASSWORD: rig-tunnel-gateway-provisioner
+      STEPPATH: /tmp/step
+      OUT_DIR: /secrets/tunnel-gw
+    volumes:
+      - /opt/shared-secrets:/secrets
+      - ../config/stepca-bootstrap.sh:/scripts/stepca-bootstrap.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/stepca-bootstrap.sh"]
+    networks: [ app ]

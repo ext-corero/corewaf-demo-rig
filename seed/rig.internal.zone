@@ -1,0 +1,62 @@
+; rig.internal — static infra zone for the local-rig v2 multi-VM topology.
+;
+; Loaded by EACH dns VM's dns-bridge via seed_zone_path (SeedZoneLoader ->
+; redis -> coredns). This is the SOLE source of rig.internal infra records:
+; there is no /etc/hosts seeding on the VMs, so cross-VM resolution rides
+; entirely on the two dns VMs serving this zone. Dynamic records
+; (peer-*.internal, *.bridges.internal) are layered on top by each
+; dns-bridge's live subscription to the app VM's events API.
+;
+; IPs MUST match v2/inventory.env.
+$ORIGIN rig.internal.
+$TTL 60
+@        60  IN  SOA   ns.rig.internal. admin.rig.internal. (
+              2026052003  ; serial
+              300         ; refresh
+              60          ; retry
+              3600        ; expire
+              60 )        ; minimum
+@            IN  NS    ns.rig.internal.
+ns       60  IN  A     192.168.150.21
+ns2      60  IN  A     192.168.150.22
+
+app-1    60  IN  A     192.168.150.10
+app      60  IN  CNAME app-1.rig.internal.
+; GUI vhost — same VM as the API, separate name so the ingress Caddy can
+; route by Host (gui -> :3000 vs api path-routes).
+gui-1    60  IN  A     192.168.150.10
+gui      60  IN  CNAME gui-1.rig.internal.
+
+dns-1    60  IN  A     192.168.150.21
+dns-2    60  IN  A     192.168.150.22
+
+gw-1     60  IN  A     192.168.150.31
+gw-2     60  IN  A     192.168.150.32
+gw-3     60  IN  A     192.168.150.33
+
+; observability VM (loki/mimir/alertmanager/grafana).
+obs-1    60  IN  A     192.168.150.40
+obs      60  IN  CNAME obs-1.rig.internal.
+
+; ---------------------------------------------------------------------------
+; Service CNAMEs — friendly <service> -> the VM A-record that hosts it, so any
+; component is addressable by service name (app/gui have A+alias above).
+; A CNAME only maps the name; reachability still depends on the service
+; publishing its port on that VM's routed IP.
+; ---------------------------------------------------------------------------
+; app VM (app-1) — ingress + platform singletons
+api          60  IN  CNAME app-1.rig.internal.
+stepca       60  IN  CNAME app-1.rig.internal.
+etcd         60  IN  CNAME app-1.rig.internal.
+redis        60  IN  CNAME app-1.rig.internal.
+caddy        60  IN  CNAME app-1.rig.internal.
+
+; secrets-managers (vmsecd, :8081) — one per dns VM
+secman-1     60  IN  CNAME dns-1.rig.internal.
+secman-2     60  IN  CNAME dns-2.rig.internal.
+
+; observability plane (obs-1)
+grafana      60  IN  CNAME obs-1.rig.internal.
+loki         60  IN  CNAME obs-1.rig.internal.
+mimir        60  IN  CNAME obs-1.rig.internal.
+alertmanager 60  IN  CNAME obs-1.rig.internal.

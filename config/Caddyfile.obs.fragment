@@ -1,0 +1,59 @@
+# obs edge — HTTPS/SNI front for the observability plane.
+#
+# DUAL-STACK: the Loki/Mimir/Grafana/Alertmanager backends keep their plain
+# per-port HTTP listeners (:3100/:9009/:3000/:9093, published in obs.yml) for
+# local debugging. THIS Caddy adds a TLS front on :443, Host/SNI-routed to each
+# backend by its rig.internal name. Each name already resolves to this VM via
+# the rig.internal zone CNAMEs (loki/mimir/grafana/alertmanager -> obs-1).
+#
+# Why a TLS front at all: the gateway's transparent proxy must be able to
+# re-originate kit traffic as https:// to these services (today it can't — they
+# only speak plain HTTP, so an outbound TLS dial gets "first record does not
+# look like a TLS handshake"). This makes them TLS-capable WITHOUT removing the
+# clear-HTTP debug path. The production shape is exactly this: every service
+# behind :443, SNI-routed.
+#
+# ACME from the app VM's step-ca, trusted via the rig root. The issuer is
+# pinned PER-SITE (not a global `acme_ca`): Caddy 2.11 would otherwise swap in
+# its own internal CA for a `.internal` name (same nuance the gw edge fragment
+# documents). step-ca reaches <name>.rig.internal on :80 (http-01) or :443
+# (tls-alpn-01) to validate the challenge — both ports are published in obs.yml.
+
+{
+	email rig@local
+	auto_https disable_redirects
+}
+
+# Shared per-site TLS issuer — step-ca ACME, rig-root-trusted, subject-scoped.
+(rig_tls) {
+	tls {
+		issuer acme {
+			dir https://app-1.rig.internal:9000/acme/acme/directory
+			trusted_roots /etc/ssl/rigca/root.crt
+		}
+	}
+}
+
+# Loki (logs). Kit-facing stamped service: logs endpoint = https://loki.rig.internal.
+loki.rig.internal {
+	import rig_tls
+	reverse_proxy loki:3100
+}
+
+# Mimir (metrics). Kit-facing stamped service: metrics endpoint = https://mimir.rig.internal.
+mimir.rig.internal {
+	import rig_tls
+	reverse_proxy mimir:9009
+}
+
+# Grafana (operator UI) — fronted for parity / uniform TLS, not kit-facing.
+grafana.rig.internal {
+	import rig_tls
+	reverse_proxy grafana:3000
+}
+
+# Alertmanager — fronted for parity, not kit-facing.
+alertmanager.rig.internal {
+	import rig_tls
+	reverse_proxy alertmanager:9093
+}

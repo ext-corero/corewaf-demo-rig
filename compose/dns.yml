@@ -1,0 +1,115 @@
+---
+# demo rig — DNS stack (runs on EACH dns VM: rig2-dns-1, rig2-dns-2).
+#
+# Self-contained resolver: redis + coredns + dns-bridge. coredns publishes :53
+# on the VM's routed IP, so every other VM (resolv.conf -> .21/.22) resolves
+# rig.internal through here. The co-located dns-bridge file-seeds the static
+# rig.internal zone and independently subscribes to the app VM's events API,
+# so the two dns VMs serve dynamic records redundantly — the distributed
+# behaviour under test.
+#
+# RIG_SELF_FQDN / RIG_SELF_NAME are injected per-instance by vmlab.sh stack so
+# this one file serves both dns-1 and dns-2.
+#
+# Run (via vmlab.sh stack dns N):
+#   docker compose --env-file inventory.env -f compose/dns.yml up --build -d
+
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  dns:
+    name: dns-rig
+    driver: bridge
+
+volumes:
+  redis-data:
+  bridge-state:   # cold-boot-persistent bridge identity (registration uuid)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rig2-redis
+    logging: *x-default-logging
+    restart: unless-stopped
+    networks: [ dns ]
+    volumes: [ "redis-data:/data" ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  coredns:
+    build: { context: ../../waf/dns-bridge/coredns, dockerfile: Dockerfile }
+    image: corewaf/waf-coredns-redis:rig
+    container_name: rig2-coredns
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [ dns ]
+    # CPU quota so coredns' maxprocs doesn't leave GOMAXPROCS unbounded noise;
+    # harmless. Publish :53 on the VM's routed IP so peer VMs resolve through us.
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - /opt/v2/config/Corefile:/etc/coredns/Corefile:ro
+    labels:
+      corewaf.io/managed: "true"
+      corewaf.io/instance: "${NODE_NAME}"
+
+  dns-bridge:
+    build:
+      context: ../../waf/dns-bridge
+      dockerfile: Dockerfile
+      # component-commons is a co-located shared-code FOLDER the Dockerfile pulls
+      # via `COPY --from=commons`. Supply it as a BuildKit named context so the
+      # path dep resolves with no registry/creds (mani checks out the whole tree).
+      additional_contexts:
+        commons: ../../waf/component-commons
+    image: corewaf/waf-dns-bridge:rig
+    container_name: rig2-dns-bridge
+    logging: *x-default-logging
+    restart: unless-stopped     # self-assembly: retry until app VM is reachable
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [ dns ]
+    # No `dns:` override — embedded 127.0.0.11 answers `redis` and forwards
+    # rig.internal/external to the VM resolv.conf (the other dns VM + fallback).
+    environment:
+      # App VM platform APIs, reached through its ingress (path-prefix routed).
+      ETCD_EVENT_API_ENDPOINT: http://app-1.rig.internal:8080/events
+      ETCD_DOMAIN_API_ENDPOINT: http://app-1.rig.internal:8080/domains
+      ETCD_NAMESPACES: '["corero-core"]'
+      ETCD_SCOPE_ORGID: system-dns-bridge
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      LOG_LEVEL: INFO
+      LOG_JSON: "false"
+      # Static infra zone — the sole source of rig.internal infra records.
+      SEED_ZONE_PATH: /seed/rig.internal.zone
+      # Where the app VM's events API delivers webhooks back to THIS bridge.
+      # Per-instance name so app-1 can reach the right dns VM (resolved via
+      # the seed zone we ourselves serve).
+      WEBHOOK_PUBLIC_URL: http://${FQDN}:8080
+      PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
+      BRIDGE_ID: ${NODE_NAME}
+      BRIDGE_REGION: rig-local
+      BRIDGE_VERSION: rig-dev
+      BRIDGE_ADVERTISED_URL: http://${FQDN}:8080
+      BRIDGE_HEARTBEAT_INTERVAL_S: "30"
+      # Cold-boot-persistent identity: the registration uuid the bridge
+      # replays to reconnect to its own record after a restart.
+      BRIDGE_STATE_PATH: /var/run/dns-bridge/state/state.json
+      COREDNS_CONTAINER_NAME: rig2-coredns
+    ports:
+      - "8080:8080"
+    user: "0:0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/v2/seed:/seed:ro
+      - bridge-state:/var/run/dns-bridge/state

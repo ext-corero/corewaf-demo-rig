@@ -1,0 +1,4 @@
+# Host-side state — never committed.
+.v2/          # CA (root_ca.crt + key), shared secrets written by the app VM, lab dir
+.cache/       # base VM image, kit image bundle, staged artefacts
+.env.local

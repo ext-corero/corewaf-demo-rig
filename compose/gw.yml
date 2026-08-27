@@ -1,0 +1,224 @@
+---
+# demo rig — GW stack (runs on EACH gw VM: rig2-gw-1, rig2-gw-2).
+#
+# tunnel-gateway (host-netns INSIDE its own VM — now harmless, the VM's host
+# netns is private) + tunnel-caddy-edge. Cross-VM: dials the app VM's platform
+# API + step-ca by rig.internal FQDN; reads the provisioner/root from the
+# shared-secrets host dir (virtiofs); resolves via the dns VMs.
+#
+# Point-1 fix in effect: the gateway publishes its identity via the platform
+# API at boot (no etcd). So this stack's keypair init is keypair-gen ONLY (a
+# local file), with zero etcd writes.
+#
+# Multi-gateway: each gateway self-registers a per-instance TunnelGateway
+# record (keyed by gateway_id) and allocates kit IPs from its OWN disjoint
+# /18 sub-CIDR, so gw-1 / gw-2 never collide on the redeem/IPAM path. The
+# CIDR + WG server address are injected per-instance as RIG_SELF_IPAM_CIDR /
+# RIG_SELF_WG_ADDR by `vmlab.sh stack gw <n>`.
+#
+# RIG_SELF_NAME / RIG_SELF_FQDN injected per-instance by vmlab.sh stack.
+
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  edge:
+    name: edge-rig
+    driver: bridge
+    # Pinned subnet so the authorizing-proxy DNAT target (the edge's
+    # container IP, below) is stable across recreates. INTERIM: the
+    # docker-IP-punch approach (DNAT kit->API into this bridge container)
+    # — to be revisited with a host-netns SO_ORIGINAL_DST proxy.
+    ipam:
+      config:
+        - subnet: 172.31.40.0/24
+
+volumes:
+  gw-local-secrets:     # WG server keypair + per-kit ZTKs (gateway is sole writer)
+  gw-runtime-state:
+  gw-wg-state:
+  caddy-edge-data:
+
+services:
+  # Keypair-gen ONLY (no etcd). Seeds the WG server private key into the
+  # local Secrets backend dir where the gateway reads it.
+  wg-keypair-gen:
+    # Reuse the gateway image (already built, ships `wg`) instead of `alpine` +
+    # `apk add` — no network needed, so a mirror hiccup can't block bring-up.
+    image: corewaf/waf-tunnel-gateway:rig
+    container_name: rig2-wg-keypair-gen
+    logging: *x-default-logging
+    restart: on-failure
+    environment:
+      SECRET_NAME: ${NODE_NAME}-wg-keypair
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        f="/secrets/$${SECRET_NAME}" &&
+        if [ ! -f "$$f" ]; then wg genkey | tr -d '\n' > "$$f"; chmod 600 "$$f";
+        echo "generated $$f"; else echo "$$f exists"; fi
+    volumes:
+      - gw-local-secrets:/secrets
+    networks: [ edge ]
+
+  tunnel-gateway:
+    build: { context: ../../waf/tunnel-gateway, dockerfile: Dockerfile }
+    image: corewaf/waf-tunnel-gateway:rig
+    container_name: rig2-tunnel-gateway
+    logging: *x-default-logging
+    restart: unless-stopped       # self-assembly: retry until app-1 API/step-ca reachable
+    depends_on:
+      wg-keypair-gen: { condition: service_completed_successfully }
+    network_mode: host
+    cap_add: [ NET_ADMIN, SYS_MODULE ]
+    entrypoint: ["python", "-m", "tunnel_gateway.launcher"]
+    environment:
+      TUNNELGW_LOG_LEVEL: INFO
+      TUNNELGW_NAMESPACE: corero-core
+      TUNNELGW_PLATFORM_API_SCOPE_ORG_ID: corero-system-owner-tunnel-gateway
+      TUNNELGW_GATEWAY_ID: ${NODE_NAME}
+      TUNNELGW_GATEWAY_REGION: rig-local
+      TUNNELGW_GATEWAY_VERSION: rig-dev
+      # Underlay listener (kit-facing, behind the edge on this same VM).
+      TUNNELGW_UNDERLAY_HOST: "0.0.0.0"
+      TUNNELGW_UNDERLAY_PORT: "19443"
+      # ADMIN FIX (the original runtime-ops bug): bind the routed NIC + advertise
+      # the rig.internal name so the GUI on the app VM reaches it over the LAN.
+      TUNNELGW_ADMIN_HOST: "0.0.0.0"
+      TUNNELGW_ADMIN_PORT: "18445"
+      TUNNELGW_GATEWAY_ADMIN_ADVERTISED_URL: "http://${FQDN}:18445"
+      # Cross-VM: platform API + step-ca on the app VM, by rig.internal FQDN.
+      TUNNELGW_PLATFORM_API_URL: "http://app-1.rig.internal:8080"
+      TUNNELGW_PLATFORM_API_PROVISIONING_PREFIX: /provisioning
+      TUNNELGW_PLATFORM_API_TENANT_PREFIX: /tenants
+      TUNNELGW_PLATFORM_API_SECRETS_PREFIX: /secrets
+      TUNNELGW_PLATFORM_API_DNS_PREFIX: /domains
+      # Rig stays HTTP to the platform API (no client mTLS) — see the tracked
+      # gw<->api authN gap. /dev/null disables the client cert.
+      TUNNELGW_PLATFORM_API_CLIENT_CERT: /dev/null
+      TUNNELGW_PLATFORM_API_CLIENT_KEY: /dev/null
+      TUNNELGW_PLATFORM_API_CA_BUNDLE: /dev/null
+      TUNNELGW_SECRETS_BACKEND: local
+      TUNNELGW_SECRETS_LOCAL_DIR: /var/run/tunnel-gateway/secrets
+      TUNNELGW_WG_SERVER_KEYPAIR_SECRET_NAME: ${NODE_NAME}-wg-keypair
+      TUNNELGW_DNS_BACKEND: platform
+      # step-ca on the app VM (trusted via the baked rig root).
+      TUNNELGW_STEPCA_URL: https://app-1.rig.internal:9000
+      TUNNELGW_STEPCA_PROVISIONER_NAME: tunnel-gateway-service
+      TUNNELGW_STEPCA_PROVISIONER_KEY_PATH: /secrets/tunnel-gw/provisioner.jwk
+      TUNNELGW_STEPCA_PROVISIONER_PASSWORD_PATH: /secrets/tunnel-gw/provisioner.password
+      TUNNELGW_STEPCA_ROOT_FINGERPRINT_PATH: /secrets/tunnel-gw/root.fingerprint
+      TUNNELGW_STEPCA_CA_BUNDLE: /secrets/tunnel-gw/root.crt
+      TUNNELGW_STEPCA_AUDIENCE_PATH: /1.0/sign
+      TUNNELGW_KIT_CERT_VALIDITY_DAYS: "1"
+      TUNNELGW_OPERATOR_CA_BUNDLE_PATH: /secrets/tunnel-gw/root.crt
+      TUNNELGW_RUNTIME_STATE_PATH: /var/run/tunnel-gateway/state/runtime-state.json
+      TUNNELGW_WG_INTERFACE: wg0
+      TUNNELGW_WG_LISTEN_PORT: "51820"
+      # Per-gateway IPAM partition. Each gateway owns a disjoint /18 of
+      # 100.64.0.0/16 (server address = .1), stamped into /etc/corewaf-bootstrap
+      # by cloud-init and sourced at `stack` time. No defaults — an unset value
+      # means the bootstrap is broken, which must fail loudly, not silently
+      # collide two gateways on the same CIDR.
+      TUNNELGW_WG_SERVER_ADDRESS: "${WG_ADDR}"
+      TUNNELGW_WG_CONF_DIR: /etc/wireguard
+      TUNNELGW_IPAM_CIDR: "${IPAM_CIDR}"
+      # Published into this gateway's own TunnelGateway record via the API;
+      # IPAM allocates kit IPs from THIS gateway's CIDR (no cross-gw collision).
+      # Kits dial this endpoint (routable from outside via the static route).
+      TUNNELGW_WG_ADVERTISED_ENDPOINT: "${FQDN}:51820"
+      TUNNELGW_DNS_FORWARD_ZONE: internal
+      TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
+      TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
+      TUNNELGW_INGRESS_BRIDGE_PORT: "443"
+      # Kit-facing resolver = the dns VMs.
+      TUNNELGW_DNS_RESOLVER_IPS: "192.168.150.21,192.168.150.22"
+      TUNNELGW_OPERATOR_SERVICE_CIDRS: "192.168.150.0/24"
+      TUNNELGW_EGRESS_MASQUERADE_ENABLED: "true"
+      # Transparent authorizing proxy (INTERIM docker-IP-punch) — PER-PORT.
+      # The kit dials the real STAMPED services (apiGateway/logs/metrics/otel)
+      # over the tunnel; the gateway DNATs that wg0 traffic to the edge on the
+      # SAME port (the pinned edge container IP, port preserved), where a
+      # per-port authorizing listener forward_auths to /internal/authorize,
+      # stamps the authoritative X-Scope-OrgID (the kit's <carrier>-kit-manager
+      # identity), and reverse-proxies to the kit's ORIGINAL Host. The kit
+      # source IP is preserved (POSTROUTING RETURN) so identity resolves by WG
+      # source IP. This STRIPS whatever scope the kit asserts — the gateway is
+      # the identity authority. The stamped SET is NOT configured here: the
+      # gateway derives + resolves it from the tunnel-defaults endpoint_fallback
+      # and refreshes it each inventory cycle. Only the edge IP is configured.
+      # TODO: replace the DNAT with a host-netns SO_ORIGINAL_DST proxy (no NAT).
+      TUNNELGW_API_PROXY_EDGE_IP: "172.31.40.40"
+      # Bridge FQDN template (operator->kit reverse channel). The kit's
+      # network-loader substitutes {hw_id} and strips scheme/port to derive
+      # its bridge FQDN — the name the kit's caddy-internal ACME-mints a cert
+      # for and serves on the edge L4 :443 SNI-passthrough reverse path
+      # (task #90, as delivered: the kit terminates TLS, the gateway nothing).
+      TUNNELGW_BRIDGE_REVERSE_URL_TEMPLATE: "https://{hw_id}.${NODE_NAME}.bridges.internal"
+    volumes:
+      - /opt/shared-secrets/tunnel-gw:/secrets/tunnel-gw:ro    # provisioner + root (virtiofs)
+      - gw-local-secrets:/var/run/tunnel-gateway/secrets
+      - gw-runtime-state:/var/run/tunnel-gateway/state
+      - gw-wg-state:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19443/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # tunnel-caddy-edge: kit-facing TLS edge. Mints its server cert via ACME
+  # from the app VM's step-ca (trusted via the shared rig root), and presents
+  # a SINGLE :443 server (folded /redeem,/health anon + /reconnect mTLS via
+  # per-path verify_if_given — see Caddyfile.edge.fragment). Reverse-proxies
+  # into the gateway's loopback underlay (:19443 via the host-gateway alias).
+  # step-ca reaches gw-N.rig.internal:80 for the ACME http-01 challenge.
+  tunnel-caddy-edge:
+    # Project caddy image (xcaddy: caddy 2.11.3 + caddy-docker-proxy v2.12 +
+    # caddy-l4). Same docker-proxy + Caddyfile-fragment mechanism; the l4
+    # plugin is available for the single-:443 SNI folding. ACME-from-stepca and
+    # the verify_if_given path ACLs are unchanged (see Caddyfile.edge.fragment).
+    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
+    image: corewaf/caddy-internal:rig
+    container_name: rig2-tunnel-caddy-edge
+    hostname: ${HOSTNAME}    # the node's own name (set on the VM, read by compose)
+    logging: *x-default-logging
+    restart: unless-stopped
+    ports:
+      - "80:80"       # ACME http-01 challenge (step-ca dials gw-N.rig.internal:80)
+      - "443:443"     # folded edge: /redeem,/health (anon) + /reconnect (mTLS) + L4 kit SNI passthrough
+    # The node's identity comes from /etc/corewaf-bootstrap (cloud-init), not a
+    # passed-in string: env_file injects $FQDN, which the fragment reads as
+    # {$FQDN}:443 for the cert subject. No RIG_SELF_* literals or defaults.
+    env_file:
+      - /etc/corewaf-bootstrap
+    environment:
+      CADDY_INGRESS_NETWORKS: edge-rig
+      CADDY_DOCKER_LABEL_PREFIX: tunnel_caddy
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile.fragment
+    extra_hosts:
+      # Gateway runs in this VM's host netns; host-gateway resolves to the VM
+      # host where its underlay listener lives.
+      - "tunnel-gw:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/shared-secrets/tunnel-gw/root.crt:/etc/ssl/rigca/root.crt:ro
+      - /opt/v2/config/Caddyfile.edge.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - caddy-edge-data:/data
+    networks:
+      edge:
+        # Stable IP — the gateway's authorizing-proxy DNAT
+        # (TUNNELGW_API_PROXY_EDGE_IP) targets this address on each stamped
+        # service's own port (same-port: :8080/:3100/:9009/...).
+        ipv4_address: 172.31.40.40
+    # No caddy labels: the edge's global options (email/auto_https) moved
+    # INTO the Caddyfile.edge.fragment global block,
+    # because the caddy-l4 `layer4` app is a global option and Caddy permits
+    # only ONE global block — so all globals live in the fragment now. The NB
+    # about keeping the ACME issuer SUBJECT-SCOPED (not a global acme_ca, which
+    # caddy 2.11 would internal-CA-swap for a .internal name) still holds: the
+    # issuer stays in the {$FQDN}:443 site block of the fragment.

@@ -1,0 +1,21 @@
+. {
+    # Redis-backed records: the co-located dns-bridge writes the file-seeded
+    # rig.internal zone here at startup, plus the dynamic records it pulls
+    # from the app VM's events API (peer-*.internal, *.bridges.internal).
+    redis {
+      address redis:6379
+      connect_timeout 100
+      read_timeout 100
+      ttl 300
+    }
+    # Chase in-zone CNAMEs so resolvers see the final A (bridge-proxy fabric).
+    finalize
+    # Everything not in our zones -> public upstream.
+    forward . 8.8.8.8
+    log . {
+      class denial error
+    }
+    errors
+    cache 30
+    reload
+}

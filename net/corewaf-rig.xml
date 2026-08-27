@@ -1,0 +1,36 @@
+<!--
+  local-rig v2 routed network.
+
+  forward mode='route' (NOT nat): the 192.168.150.0/24 subnet is routed, not
+  masqueraded, so the VMs are first-class addressable hosts. Other machines
+  reach them by adding ONE static route to this host:
+      ip route add 192.168.150.0/24 via <this-host-LAN-ip>
+  and this host needs net.ipv4.ip_forward=1 (libvirt sets the per-bridge
+  forward rules). VMs reach the internet/host via the .1 gateway.
+
+  Deterministic IPs via DHCP reservations (MACs from v2/inventory.env;
+  last MAC octet == IP host octet). vmlab.sh assigns the matching MAC by role.
+
+  No <dns>/<forwarder> here on purpose: name resolution is the rig's own
+  dns-bridge+coredns VMs (.21/.22), not libvirt dnsmasq — that's the
+  distributed behaviour under test.
+-->
+<network>
+  <name>corewaf-rig</name>
+  <forward mode='route'/>
+  <bridge name='virbr-cwrig' stp='on' delay='0'/>
+  <domain name='rig.internal'/>
+  <dns enable='no'/>
+  <ip address='192.168.150.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.150.200' end='192.168.150.250'/>
+      <host mac='52:54:00:96:00:0a' name='rig2-app-1' ip='192.168.150.10'/>
+      <host mac='52:54:00:96:00:15' name='rig2-dns-1' ip='192.168.150.21'/>
+      <host mac='52:54:00:96:00:16' name='rig2-dns-2' ip='192.168.150.22'/>
+      <host mac='52:54:00:96:00:1f' name='rig2-gw-1'  ip='192.168.150.31'/>
+      <host mac='52:54:00:96:00:20' name='rig2-gw-2'  ip='192.168.150.32'/>
+      <host mac='52:54:00:96:00:21' name='rig2-gw-3'  ip='192.168.150.33'/>
+      <host mac='52:54:00:96:00:28' name='rig2-obs-1' ip='192.168.150.40'/>
+    </dhcp>
+  </ip>
+</network>

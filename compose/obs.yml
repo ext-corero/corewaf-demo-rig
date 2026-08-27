@@ -1,0 +1,149 @@
+---
+# demo rig — observability stack (runs on the obs VM: rig2-obs-1).
+# Loki (logs) + Mimir (metrics) + Alertmanager + Grafana, all on one VM as its
+# own compose project (name: obs-rig). Grafana is provisioned with Loki + Mimir
+# datasources out of the box.
+#
+# This stands the observability plane UP. Wiring the rig components to SHIP
+# here (alloy/promtail log push, Prometheus remote-write, X-Scope-OrgID
+# tenanting) is the follow-on (task #91) — these endpoints are ready for it.
+#
+# DUAL-STACK (caddy-obs): each service is reachable BOTH on plain HTTP per-port
+# (debug) AND over TLS by name on :443 (Host/SNI-routed, step-ca certs):
+#   Loki push   : http://obs-1.rig.internal:3100/loki/api/v1/push
+#                 https://loki.rig.internal/loki/api/v1/push
+#   Mimir write : http://obs-1.rig.internal:9009/api/v1/push
+#                 https://mimir.rig.internal/api/v1/push
+#
+# Images pull from docker.io; the obs VM has egress via the rig masquerade and
+# falls through to the bootstrap resolver for registry DNS.
+#
+# Run (via vmlab.sh stack obs):
+#   docker compose --env-file inventory.env -f compose/obs.yml up -d
+
+name: obs-rig
+
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  obs:
+    name: obs-rig
+
+volumes:
+  loki-data:
+  mimir-data:
+  grafana-data:
+  alertmanager-data:
+  caddy-obs-data:       # ACME account state + auto-issued certs (step-ca)
+
+services:
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: rig2-loki
+    logging: *x-default-logging
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    networks: [ obs ]
+    ports:
+      - "3100:3100"
+    volumes:
+      - /opt/v2/config/obs/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mimir:
+    image: grafana/mimir:2.13.0
+    container_name: rig2-mimir
+    logging: *x-default-logging
+    restart: unless-stopped
+    command: ["-config.file=/etc/mimir/mimir.yaml", "-target=all"]
+    networks: [ obs ]
+    ports:
+      - "9009:9009"
+    volumes:
+      - /opt/v2/config/obs/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data
+    # No healthcheck: the grafana/mimir image is distroless (no shell, no
+    # wget/curl), so a CMD/CMD-SHELL probe can't run. Readiness is externally
+    # probeable at :9009/ready (used by the future obs integration).
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: rig2-alertmanager
+    logging: *x-default-logging
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks: [ obs ]
+    ports:
+      - "9093:9093"
+    volumes:
+      - /opt/v2/config/obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: rig2-grafana
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      loki: { condition: service_started }
+      mimir: { condition: service_started }
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # rig convenience: anonymous viewer so the dashboards open without login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_SERVER_ROOT_URL: "http://obs-1.rig.internal:3000/"
+    networks: [ obs ]
+    ports:
+      - "3000:3000"
+    volumes:
+      - /opt/v2/config/obs/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - grafana-data:/var/lib/grafana
+
+  # caddy-obs — HTTPS/SNI front for the observability plane (DUAL-STACK).
+  # The backends above keep their plain per-port HTTP (:3100/:9009/:3000/:9093)
+  # for debugging; this adds a TLS front on :443, Host/SNI-routed to each by its
+  # rig.internal name (loki/mimir/grafana/alertmanager). Mints server certs via
+  # ACME from the app VM's step-ca (trusted via the rig root) — same image and
+  # pattern as the gw edge. See /opt/v2/config/Caddyfile.obs.fragment.
+  #
+  # This is what makes the obs services TLS-capable so the gateway's transparent
+  # proxy can re-originate kit traffic as https:// to them. The clear-HTTP path
+  # is preserved on the original ports.
+  caddy-obs:
+    build: { context: ../../waf/system-loader/caddy-internal, dockerfile: Dockerfile }
+    image: corewaf/caddy-internal:rig
+    container_name: rig2-caddy-obs
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      loki: { condition: service_started }
+      mimir: { condition: service_started }
+    env_file:
+      - /etc/corewaf-bootstrap     # node FQDN/name (parity with the gw edge)
+    environment:
+      # docker-proxy watches THIS project's network; all site config lives in
+      # the mounted fragment (no per-container labels), exactly like the gw edge.
+      CADDY_INGRESS_NETWORKS: obs-rig
+      CADDY_DOCKER_LABEL_PREFIX: obs_caddy
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile.fragment
+    ports:
+      - "80:80"       # ACME http-01 (step-ca dials <name>.rig.internal:80)
+      - "443:443"     # HTTPS/SNI front: loki/mimir/grafana/alertmanager.rig.internal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/rig-ca/root_ca.crt:/etc/ssl/rigca/root.crt:ro   # trust step-ca's ACME dir
+      - /opt/v2/config/Caddyfile.obs.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - caddy-obs-data:/data
+    networks: [ obs ]
