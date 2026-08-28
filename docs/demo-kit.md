@@ -24,13 +24,13 @@ provision it (Role / Placement / WAF units / Lifecycle).
 ```bash
 task demo:prep              # == v2/kit-prep.sh demo
 ```
-Boots `rig-demo` (libvirt, swtpm TPM, default NAT), points its resolver at
+Boots the `kit-demo` node (a container running the kit VM under QEMU/KVM with a swtpm TPM, on the rig network), points its resolver at
 the dns VMs, stages the starter-kit tree, offline-loads the private GHCR
 kit images, installs git, sets the console password, and drops the two
 rig-specific bits into `/opt/kit-demo/` plus the `corewaf-demo-up` helper.
 Ends with a readiness check (DNS, edge over TLS with the rig CA, TPM,
 images). The VM is left running and **not enrolled**; it survives
-`virsh shutdown`/`start`, and `task demo:prep` is re-runnable to re-stage.
+`task stop`/`task up`, and `task demo:prep` is re-runnable to re-stage.
 
 ## During the demo
 

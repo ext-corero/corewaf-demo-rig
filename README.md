@@ -1,7 +1,7 @@
 # CoreWAF demo rig
 
-A self-contained, multi-VM CoreWAF environment for demos and testing: six libvirt
-VMs (`app-1`, `dns-1/2`, `gw-1/2`, `obs-1`) on a routed lab network, each running
+A self-contained, multi-VM CoreWAF environment for demos and testing: six
+VMs (each hosted by a Docker container running QEMU/KVM) (`app-1`, `dns-1/2`, `gw-1/2`, `obs-1`) on a routed lab network, each running
 its own docker stack, plus kit VMs enrolled over the gateway TLS edge + WireGuard.
 
 This repository is **public and deliberately thin**: it only knows how to stand
