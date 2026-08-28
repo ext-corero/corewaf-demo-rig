@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# kit-stage — stage this node's KIT guest for a demo (not enrolled). Runs inside the
+# kit node container (docker compose exec kit-demo kit-stage). Same steps as the
+# libvirt-era kit-prep.sh, over the container's own ssh path to the guest:
+#   rig root CA, starter-kit clone (KIT_REPO_URL@KIT_REF), kit images pulled from the
+#   CoreWAF registry and re-tagged to the names the public compose expects, the
+#   /opt/kit-demo helper (corewaf-demo-up) and a console login (alpine/alpine).
+set -euo pipefail
+source /usr/local/bin/rig-lib.sh
+RIG_DIR=/rig/v2; source /rig/v2/lib/registry.sh
+log "waiting for guest ssh"
+for _ in $(seq 1 90); do nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1 && break; sleep 2; done
+vm-ssh 'true' || die "guest not reachable"
+log "docker in the guest"
+vm-ssh 'sudo rc-service docker start >/dev/null 2>&1 || true; for i in $(seq 1 60); do sudo docker info >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1' || die "dockerd not ready in the guest"
+log "root CA -> /opt/kit-root.crt"
+vm-scp "$CA_DIR/root_ca.crt" /tmp/root.crt; vm-ssh 'sudo cp /tmp/root.crt /opt/kit-root.crt'
+log "registry auth -> guest root"
+vm-scp "$AUTH_DIR/docker-config.json" /tmp/docker-config.json
+vm-ssh 'sudo mkdir -p /root/.docker && sudo mv /tmp/docker-config.json /root/.docker/config.json && sudo chmod 600 /root/.docker/config.json'
+if [[ -d /rig/kitsrc ]]; then
+    log "staging LOCAL starter-kit (kit-local override)"
+    vm-ssh 'sudo rm -rf /opt/corewaf-starter-kit; sudo mkdir -p /opt/corewaf-starter-kit; sudo mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,ro kitsrc /mnt 2>/dev/null; sudo cp -a /mnt/. /opt/corewaf-starter-kit/; sudo umount /mnt'
+else
+    log "cloning starter-kit ${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}@${KIT_REF:-main}"
+    vm-ssh "sudo rm -rf /opt/corewaf-starter-kit; sudo git clone -q --depth 1 --branch '${KIT_REF:-main}' '${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}' /opt/corewaf-starter-kit"
+fi
+log "pulling kit images from the registry inside the guest (re-tagged for the public compose)"
+reg_kit_pull_script > /run/kit-pull.sh; vm-scp /run/kit-pull.sh /tmp/kit-pull.sh; vm-ssh 'sudo sh /tmp/kit-pull.sh'
+log "demo helper + console login"
+vm-ssh "echo alpine:alpine | sudo chpasswd; sudo mkdir -p /opt/kit-demo && sudo cp /opt/kit-root.crt /opt/kit-demo/operator-ca.crt && sudo tee /opt/kit-demo/docker-compose.override.yml >/dev/null <<'EOF2'
+# rig demo override — TPM PKCS#11 wiring for the swtpm-backed kit VM.
+services:
+  tunnel:
+    environment:
+      NL_PKCS11_PIN: \"0000\"
+      TPM2_PKCS11_STORE: \"/var/lib/tunnel/pkcs11-store\"
+EOF2
+sudo tee /usr/local/bin/corewaf-demo-up >/dev/null <<'EOF2'
+#!/bin/sh
+# corewaf-demo-up — finish a NO_UP=1 bootstrap: drop in the rig CA + TPM override,
+# bring the kit up, wait for the tunnel to go healthy.
+set -eu
+KIT=\"\${1:-\$HOME/corewaf-starter-kit}\"; cd \"\$KIT\"
+cp /opt/kit-demo/operator-ca.crt runtime/operator-ca.crt
+cp /opt/kit-demo/docker-compose.override.yml docker-compose.override.yml
+sudo docker compose up -d
+printf 'waiting for tunnel'
+for i in \$(seq 1 60); do [ \"\$(sudo docker compose ps --format '{{.Health}}' tunnel 2>/dev/null | head -1)\" = healthy ] && { echo ' healthy'; break; }; printf .; sleep 3; done
+sudo docker logs corewaf-tunnel 2>&1 | grep -E 'redeem|foundation tier ready' | tail -2
+EOF2
+sudo chmod +x /usr/local/bin/corewaf-demo-up"
+log "readiness"
+vm-ssh "getent hosts $RIG_GW_1_FQDN >/dev/null && echo '  dns  : $RIG_GW_1_FQDN resolves'; curl -sf --cacert /opt/kit-root.crt https://$RIG_GW_1_FQDN/health >/dev/null && echo '  edge : https://$RIG_GW_1_FQDN/health ok (rig CA trusted)'; ls /dev/tpm0 >/dev/null && echo '  tpm  : /dev/tpm0 present'; sudo docker image ls --format '  img  : {{.Repository}}:{{.Tag}}' | grep -E 'network-loader|caddy-waf'"
+log "kit guest staged and NOT enrolled"
