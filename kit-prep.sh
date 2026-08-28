@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kit-prep.sh — stage a kit VM for a MANUAL demo enrolment (no token, no enrol).
 #
-# Same VM + staging as kit-up.sh (default NAT, TPM, resolv -> dns VMs, rig root
+# Same VM + staging as kit-up.sh (rig network, TPM, resolv -> dns VMs, rig root
 # CA, starter-kit tree, offline-loaded kit images) but stops short of minting a
 # token and running the install shim. The demo step is then a single command
 # run inside the VM with a token minted live (GUI: tenant -> Mint token, or
@@ -50,13 +50,13 @@ if [[ "${RIG_BUNDLE:-0}" != 1 ]]; then
 fi
 export DOCKER_AUTH_JSON
 
-# ── boot the kit VM (default NAT) with the v2 install shim mounted ─
+# ── boot the kit VM (rig network) with the v2 install shim mounted ─
 if virsh dominfo "rig-$NAME" &>/dev/null; then
     log "VM rig-$NAME already exists — re-staging only"
     virsh domstate "rig-$NAME" | grep -q running || virsh start "rig-$NAME" >/dev/null
 else
-    log "booting kit VM $NAME (default NAT)"
-    KIT_SHIM="$HERE/kit-shim" "$VMLAB" create "$NAME"
+    log "booting kit VM $NAME (rig network)"
+    NETWORK="$RIG_NET_NAME" KIT_SHIM="$HERE/kit-shim" "$VMLAB" create "$NAME"
 fi
 
 log "setting kit resolv.conf -> dns VMs ($RIG_RESOLVERS)"

@@ -17,7 +17,7 @@
 -->
 <network>
   <name>corewaf-rig</name>
-  <forward mode='route'/>
+  <forward mode='nat'/>
   <bridge name='virbr-cwrig' stp='on' delay='0'/>
   <domain name='rig.internal'/>
   <dns enable='no'/>

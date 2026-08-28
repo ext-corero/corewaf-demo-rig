@@ -18,26 +18,22 @@ issued by the CoreWAF operators.
  rig-<kit>     starter-kit VM: netns · tunnel · caddy
 ```
 
-## Status
-
-Migrating out of `corewaf-workspace/local-rig` (deprecated there). This first cut
-still builds images from a sibling `corewaf-workspace` checkout (`RIG_MODE=source`);
-registry pulls, host prep and the curl bootstrap land in the following commits.
-Inventory (names/IPs/MACs) is `inventory.env` — nothing else hardcodes an address.
-
-## Quick start (today)
+## Quick start
 
 ```bash
-task up          # network + VMs + stacks
+git clone https://github.com/ext-corero/corewaf-demo-rig.git && cd corewaf-demo-rig
+aws configure --profile corewaf-ecr        # the key your CoreWAF operator issued (IAM group corewaf-ecr-pull)
+export AWS_PROFILE=corewaf-ecr
+task prep-host   # once: packages, libvirt, groups/ACLs, rig NAT network, /etc/hosts names (one sudo prompt)
+task up          # fetch the VM base image + pull all images from the registry, boot 6 VMs
 task verify      # health checklist
-task demo:reset  # stage a kit VM and mint a token — see docs/demo-kit.md
+task demo:reset  # stage a kit VM + mint a token — see docs/demo-kit.md
 ```
 
-Host prerequisites for now: libvirt/KVM, `virt-install`, `swtpm`, `xorriso`, Docker,
-Taskfile, `dig`, `curl`, `python3`; `~/vm-lab/` prepared base + SSH key; golden image
-`.cache/corewaf-kit-base.qcow2` (`scripts/build-kit-base.sh`); `/etc/hosts` entries for
-`app-1`/`gui-1`/`dns-1`/`dns-2`/`obs-1.rig.internal`; the egress NAT rule for
-`192.168.150.0/24` (`up.sh` prints it). All of this is being folded into `task prep-host`.
+Host: any Linux with KVM (libvirt/qemu are installed by `prep-host`), incl. WSL2 with
+nested virtualization. Nothing is built locally: the VM base image and every container
+image are pulled from the CoreWAF registry; `RIG_MODE=source` (developer path) builds
+from a sibling `corewaf-workspace` instead.
 
 - GUI: <http://gui-1.rig.internal:8080> · API: <http://app-1.rig.internal:8080> ·
   Grafana: <http://obs-1.rig.internal:3000>

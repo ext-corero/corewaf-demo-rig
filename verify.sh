@@ -7,8 +7,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIG_DIR="$HERE"
 # shellcheck disable=SC1091
 source "$HERE/inventory.env"
+# shellcheck disable=SC1091
+source "$HERE/lib/host.sh"
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
-SSH=(ssh -i "$HOME/vm-lab/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5)
+SSH=(ssh -i "$(host_lab_dir)/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5)
 pass=0; fail=0
 ok()   { printf '  \e[32m✓\e[0m %s\n' "$*"; pass=$((pass+1)); }
 bad()  { printf '  \e[31m✗\e[0m %s\n' "$*"; fail=$((fail+1)); }
@@ -51,7 +53,7 @@ for ns in $RIG_RESOLVERS; do
     [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"
 done
 "${SSH[@]}" "alpine@$RIG_APP_IP" 'ping -c1 -W2 8.8.8.8 >/dev/null 2>&1' && ok "VM egress (masquerade present)" \
-    || bad "VM egress — run: sudo iptables -t nat -A POSTROUTING -s $RIG_NET_CIDR ! -d $RIG_NET_CIDR -j MASQUERADE"
+    || bad "VM egress — libvirt NAT not working (virsh net-dumpxml $RIG_NET_NAME: forward mode must be nat; RIG_NET_MODE=route needs a host masquerade)"
 
 echo "== gateways: WG peers =="
 for gw in "gw-1:$RIG_GW_1_IP" "gw-2:$RIG_GW_2_IP"; do

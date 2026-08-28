@@ -28,7 +28,9 @@ source "$HERE/inventory.env"
 # shellcheck disable=SC1091
 source "$HERE/lib/registry.sh"
 
-LAB_DIR="${LAB_DIR:-$HOME/vm-lab}"
+# shellcheck disable=SC1091
+source "$HERE/lib/host.sh"
+LAB_DIR="$(host_lab_dir)"
 INSTANCES="$LAB_DIR/instances"
 SEEDS="$LAB_DIR/seeds"
 SSH_KEY="$LAB_DIR/id_lab"
@@ -79,14 +81,28 @@ vm_ip() { virsh domifaddr "$1" --source agent 2>/dev/null | awk '/ipv4/{print $4
 
 # ---- network ---------------------------------------------------------------
 cmd_net_up() {
+    local want="${RIG_NET_MODE:-nat}" xml="$HERE/net/corewaf-rig.xml" tmp
+    tmp="$(mktemp)"; sed "s#<forward mode='[a-z]*'/>#<forward mode='$want'/>#" "$xml" > "$tmp"
     if virsh net-info "$RIG_NET_NAME" &>/dev/null; then
-        [[ "$(virsh net-info "$RIG_NET_NAME")" =~ Active:[[:space:]]+yes ]] || virsh net-start "$RIG_NET_NAME"
-        echo "network $RIG_NET_NAME present"
+        local have; have="$(virsh net-dumpxml "$RIG_NET_NAME" | sed -n "s#.*<forward mode='\([a-z]*\)'.*#\1#p" | head -1)"
+        if [[ "$have" != "$want" ]]; then
+            if virsh list --name | grep -q '^rig'; then
+                die "network $RIG_NET_NAME is '$have' but '$want' is wanted — stop the rig VMs first (down.sh), then re-run"
+            fi
+            echo "[net] redefining $RIG_NET_NAME: $have -> $want"
+            virsh net-destroy "$RIG_NET_NAME" 2>/dev/null || true
+            virsh net-undefine "$RIG_NET_NAME"
+            virsh net-define "$tmp"; virsh net-autostart "$RIG_NET_NAME" >/dev/null
+        fi
+        [[ "$(virsh net-info "$RIG_NET_NAME" | awk '/^Active/{print $2}')" == yes ]] || virsh net-start "$RIG_NET_NAME"
+        echo "[net] $RIG_NET_NAME present ($want)"
     else
-        virsh net-define "$HERE/net/corewaf-rig.xml"
-        virsh net-start "$RIG_NET_NAME"
-        virsh net-autostart "$RIG_NET_NAME"
-        echo "network $RIG_NET_NAME defined + started"
+        virsh net-define "$tmp"; virsh net-start "$RIG_NET_NAME"; virsh net-autostart "$RIG_NET_NAME" >/dev/null
+        echo "[net] $RIG_NET_NAME defined + started ($want)"
+    fi
+    rm -f "$tmp"
+    if [[ "$want" == route ]]; then
+        echo "[net] route mode: this host must masquerade/forward 192.168.150.0/24 itself (see net/corewaf-rig.xml)"
     fi
 }
 cmd_net_down() { virsh net-destroy "$RIG_NET_NAME" 2>/dev/null || true; }
@@ -215,7 +231,7 @@ cmd_create() {
     fi
     [[ -f "$BASE_IMG" ]] || die "base image missing: $BASE_IMG (run scripts/fetch-base.sh)"
 
-    qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMG" "$disk" "$DISK_SIZE"
+    qemu-img create -q -f qcow2 -F qcow2 -b "$(readlink -f "$BASE_IMG")" "$disk" "$DISK_SIZE"
     write_seed "$name"
     # The full workspace is mapped in ONLY for RIG_MODE=source (builds from source).
     # In the default pull mode the VM sees just /opt/v2 (this repo), the shared
@@ -226,13 +242,13 @@ cmd_create() {
         WS_FS=(--filesystem "driver.type=virtiofs,source.dir=$WORKSPACE,target.dir=workspace,readonly=on")
     fi
 
-    /usr/bin/python3 /usr/bin/virt-install \
+    $(host_virt_install) \
         --name "$name" \
         --memory "$R_RAM" --vcpus "${V2_VCPUS:-2}" \
         --memorybacking access.mode=shared,source.type=memfd \
         --disk "path=$disk,format=qcow2,bus=virtio" \
         --disk "path=$SEEDS/$name-seed.iso,device=cdrom" \
-        --os-variant alpinelinux3.20 \
+        $(host_osinfo_arg) \
         --network "network=$RIG_NET_NAME,model=virtio,mac=$R_MAC" \
         "${WS_FS[@]}" \
         --filesystem "driver.type=virtiofs,source.dir=$HERE,target.dir=v2cfg,readonly=on" \

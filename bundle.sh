@@ -10,10 +10,10 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; RIG_DIR="$HERE"
 # shellcheck disable=SC1091
-source "$HERE/inventory.env"; source "$HERE/lib/registry.sh"
+source "$HERE/inventory.env"; source "$HERE/lib/registry.sh"; source "$HERE/lib/host.sh"
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 B="$HERE/.v2/bundle"; mkdir -p "$B"
-SSH=(ssh -i "${LAB_DIR:-$HOME/vm-lab}/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5)
+SSH=(ssh -i "$(host_lab_dir)/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5)
 log() { printf '\e[36m==>\e[0m %s\n' "$*"; }
 
 cmd_save() {
@@ -34,7 +34,7 @@ cmd_load() {
     [[ -s "$B/rig-images.tar" ]] || { echo "no bundle at $B — run bundle.sh save on a host with registry access" >&2; exit 1; }
     for ip in $RIG_APP_IP $RIG_DNS_1_IP $RIG_DNS_2_IP $RIG_GW_1_IP $RIG_GW_2_IP $RIG_OBS_1_IP; do
         log "loading into $ip"
-        scp -q -i "${LAB_DIR:-$HOME/vm-lab}/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$B/rig-images.tar" "alpine@$ip:/tmp/rig-images.tar"
+        scp -q -i "$(host_lab_dir)/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$B/rig-images.tar" "alpine@$ip:/tmp/rig-images.tar"
         "${SSH[@]}" "alpine@$ip" 'doas docker load -i /tmp/rig-images.tar >/dev/null && rm -f /tmp/rig-images.tar'
     done
 }

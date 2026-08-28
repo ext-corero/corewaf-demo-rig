@@ -21,6 +21,11 @@ tasks:
   # =====================================================================
   # v2 rig — infra VMs
   # =====================================================================
+  prep-host:
+    desc: 'One-time host setup (packages, libvirt, groups/ACLs, rig NAT network, /etc/hosts names) — the only step needing sudo'
+    cmds:
+      - bash prep-host.sh
+
   up:
     desc: 'Bring up the rig (CA, network, VMs, stacks). Images pulled from images.env; RIG_MODE=source builds from ../ workspace'
     cmds:

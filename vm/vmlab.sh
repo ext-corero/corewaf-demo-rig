@@ -27,9 +27,13 @@ set -euo pipefail
 : "${LIBVIRT_DEFAULT_URI:=qemu:///system}"
 export LIBVIRT_DEFAULT_URI
 
-VIRT_INSTALL=( /usr/bin/python3 /usr/bin/virt-install )
 
-LAB_DIR="${LAB_DIR:-$HOME/vm-lab}"
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/host.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/inventory.env"
+RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LAB_DIR="$(host_lab_dir)"
+read -r -a VIRT_INSTALL <<<"$(host_virt_install)"
 INSTANCES="$LAB_DIR/instances"
 SEEDS="$LAB_DIR/seeds"
 SSH_KEY="$LAB_DIR/id_lab"
@@ -56,7 +60,8 @@ write_files:
 EOF2
 }
 
-NETWORK="${NETWORK:-default}"
+# Kit VMs join the rig network (DHCP range) — same L2 as the gateways.
+NETWORK="${NETWORK:-$RIG_NET_NAME}"
 RAM_MB="${RAM_MB:-1024}"
 VCPUS="${VCPUS:-1}"
 DISK_SIZE="${DISK_SIZE:-12G}"
@@ -108,7 +113,7 @@ cmd_create() {
     [[ -f "$BASE_IMG" ]] || die "base image missing: $BASE_IMG (run fixture/multi-vm/prep-host.sh + prepare-base.sh first)"
     [[ -d "$KIT_SHIM" ]] || die "kit-shim dir missing: $KIT_SHIM"
 
-    qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMG" "$disk" "$DISK_SIZE"
+    qemu-img create -q -f qcow2 -F qcow2 -b "$(readlink -f "$BASE_IMG")" "$disk" "$DISK_SIZE"
 
     local pubkey; pubkey=$(<"${SSH_KEY}.pub")
     if (( USING_PREPARED )); then
@@ -137,7 +142,6 @@ runcmd:
   - mkdir -p /opt/kit-shim
   - mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,ro kitshim /opt/kit-shim || true
   - sh -c 'echo "kitshim /opt/kit-shim 9p trans=virtio,version=9p2000.L,cache=none,ro 0 0" >> /etc/fstab'
-  - sh -c 'echo "$RIG_HOST_IP corewaf.localhost web-ui.localhost" >> /etc/hosts'
   - chown alpine:alpine /home/alpine || true
 final_message: "VM $name ready (uptime: \$UPTIME s)"
 EOF
@@ -179,7 +183,6 @@ runcmd:
   - mkdir -p /opt/kit-shim
   - mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,ro kitshim /opt/kit-shim || true
   - sh -c 'echo "kitshim /opt/kit-shim 9p trans=virtio,version=9p2000.L,cache=none,ro 0 0" >> /etc/fstab'
-  - sh -c 'echo "$RIG_HOST_IP corewaf.localhost web-ui.localhost" >> /etc/hosts'
   - chown alpine:alpine /home/alpine || true
   - apk del linux-virt
 power_state:
@@ -206,7 +209,7 @@ EOF
         --memory "$RAM_MB" --vcpus "$VCPUS" \
         --disk "path=$disk,format=qcow2,bus=virtio" \
         --disk "path=$seed,device=cdrom" \
-        --os-variant alpinelinux3.20 \
+        $(host_osinfo_arg) \
         --network "network=$NETWORK,model=virtio" \
         --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb \
         --filesystem "$KIT_SHIM,kitshim,readonly=on" \

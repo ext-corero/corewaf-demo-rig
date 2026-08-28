@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # kit-up.sh — boot one external kit VM and enroll it against the v2 rig.
 #
-# v2 adaptation of vm/runner.sh: the kit VM sits on libvirt's default NAT
-# (external), routes to the routed rig subnet through this host, resolves
+# v2 adaptation of vm/runner.sh: the kit VM sits on the rig's libvirt network (DHCP range),
+# same L2 as the gateways, resolves
 # rig.internal via the dns VMs, redeems at gw-1.rig.internal:443 and WGs to
 # gw-1.rig.internal:51820. Uses the v2 rig root CA + the v2 install shim.
 #
@@ -24,7 +24,7 @@ source "$HERE/lib/registry.sh"
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 
 NAME="${1:-kit-v2}"
-VMLAB="$RIG_DIR/vm/vmlab.sh"   # single-host driver: default NAT + alpine-prepared (TPM/WG/docker)
+VMLAB="$RIG_DIR/vm/vmlab.sh"   # kit VM driver (rig network, TPM, rig base image)
 
 
 log() { printf '\e[36m==>\e[0m %s\n' "$*"; }
@@ -54,9 +54,9 @@ if [[ "${RIG_BUNDLE:-0}" != 1 ]]; then
 fi
 export DOCKER_AUTH_JSON
 
-# ── boot the kit VM (default NAT) with the v2 install shim mounted ─
-log "booting kit VM $NAME (default NAT)"
-KIT_SHIM="$HERE/kit-shim" "$VMLAB" create "$NAME"
+# ── boot the kit VM (rig network) with the v2 install shim mounted ─
+log "booting kit VM $NAME (rig network)"
+NETWORK="$RIG_NET_NAME" KIT_SHIM="$HERE/kit-shim" "$VMLAB" create "$NAME"
 
 # ── point the kit's resolver at the dns VMs (resolves rig.internal) ─
 log "setting kit resolv.conf -> dns VMs ($RIG_RESOLVERS)"

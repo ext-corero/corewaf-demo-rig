@@ -10,8 +10,7 @@
 # isn't load-bearing — a stack that starts before its dependency is reachable
 # just retries until the graph converges. Re-runnable.
 #
-# Egress masquerade needs host privileges; if $SUDO_ASKPASS is set we use it,
-# otherwise we print the rule for you to add once.
+# Egress: the rig network is libvirt NAT — libvirtd masquerades, no host rule needed.
 
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,18 +19,11 @@ export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 source "$HERE/inventory.env"
 VMLAB="$HERE/vmlab.sh"
 
-ensure_masquerade() {
-    local rule=(-t nat POSTROUTING -s "$RIG_NET_CIDR" ! -d "$RIG_NET_CIDR" -j MASQUERADE)
-    local SUDO=(sudo)
-    [[ -n "${SUDO_ASKPASS:-}" ]] && SUDO=(sudo -A)
-    if "${SUDO[@]}" iptables -C "${rule[@]}" 2>/dev/null; then
-        echo "[net] egress masquerade present"
-    elif "${SUDO[@]}" iptables -A "${rule[@]}" 2>/dev/null; then
-        echo "[net] egress masquerade added"
-    else
-        echo "[net] WARNING: could not add egress masquerade (need privileges)." >&2
-        echo "      Run once:  sudo iptables -A nat ... or:" >&2
-        echo "      sudo iptables -t nat -A POSTROUTING -s $RIG_NET_CIDR ! -d $RIG_NET_CIDR -j MASQUERADE" >&2
+# Name resolution for the operator's browser/CLI: prep-host.sh writes a managed
+# block into /etc/hosts (from inventory.env). Just warn if it's missing.
+check_host_resolution() {
+    if ! getent hosts "$RIG_APP_FQDN" >/dev/null 2>&1; then
+        echo "[hosts] WARNING: $RIG_APP_FQDN does not resolve on this host — run prep-host.sh (adds the rig names to /etc/hosts)" >&2
     fi
 }
 
@@ -43,7 +35,7 @@ echo "== ca + secrets =="
 
 echo "== network =="
 "$VMLAB" net-up
-ensure_masquerade
+check_host_resolution
 
 echo "== create VMs =="
 "$VMLAB" create app
