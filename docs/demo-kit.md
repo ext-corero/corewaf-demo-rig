@@ -85,6 +85,7 @@ otherwise the next heartbeat re-registers it.
 | `task verify`: coredns unhealthy / "VM egress" red | masquerade rule missing (host reboot) → the `sudo iptables …` line in the README |
 | kit can't resolve `gw-1.rig.internal` | VM `/etc/resolv.conf` not pointing at 192.168.150.21/22 → `task demo:prep` re-stages it |
 | GUI badge "Heartbeat slow" | lastSeen 90 s–5 min old: a kit whose VM is gone (delete the row), or the browser tab was backgrounded (the list only polls while visible) |
+| `tunnel-mint: no tenants in corero-core` (fresh rig) | `task seed` should create the demo carriers/tenants; the current waf-api demo loader fails on carrier resolution (upstream bug in `waf/api/demo/load.py`). Workaround: `task demo:token TENANT=corero-system-owner-tunnel-gateway` |
 | `bootstrap.sh`: `git is required` | VM not staged by the current `kit-prep.sh` → `task demo:prep` |
 
 Useful inside the VM: `cd ~/corewaf-starter-kit && sudo docker compose ps`,
