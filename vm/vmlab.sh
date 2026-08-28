@@ -47,6 +47,20 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_SHIM="${KIT_SHIM:-$SCRIPT_DIR/kit-shim}"
 
+# Optional registry auth for the kit VM's docker (root): pass the full
+# /root/.docker/config.json content in DOCKER_AUTH_JSON (kit-prep/kit-up do,
+# from lib/registry.sh). Empty = no registry auth written.
+docker_auth_write_files() {
+    [[ -n "${DOCKER_AUTH_JSON:-}" ]] || return 0
+    cat <<EOF2
+write_files:
+  - path: /root/.docker/config.json
+    permissions: '0600'
+    content: |
+      ${DOCKER_AUTH_JSON}
+EOF2
+}
+
 NETWORK="${NETWORK:-default}"
 RAM_MB="${RAM_MB:-1024}"
 VCPUS="${VCPUS:-1}"
@@ -118,6 +132,7 @@ users:
     shell: /bin/sh
     ssh_authorized_keys:
       - $pubkey
+$(docker_auth_write_files)
 bootcmd:
   - sed -i 's|/sbin/agetty -[^ ]* [^ ]* |/sbin/getty |g; s|/sbin/agetty|/sbin/getty|g' /etc/inittab
   - kill -HUP 1
@@ -158,6 +173,7 @@ users:
     shell: /bin/sh
     ssh_authorized_keys:
       - $pubkey
+$(docker_auth_write_files)
 bootcmd:
   - sed -i 's|/sbin/agetty -[^ ]* [^ ]* |/sbin/getty |g; s|/sbin/agetty|/sbin/getty|g' /etc/inittab
   - kill -HUP 1
@@ -188,6 +204,7 @@ EOF
         -graft-points \
             "user-data=$SEEDS/$name-user-data" \
             "meta-data=$SEEDS/$name-meta-data"
+    chmod 600 "$SEEDS/$name-user-data" "$seed"     # may carry a registry token
 
     "${VIRT_INSTALL[@]}" \
         --name "$name" \

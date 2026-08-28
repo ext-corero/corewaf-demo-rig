@@ -12,27 +12,20 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"          # repo root
 RIG_DIR="$HERE"                              # repo root
 WORKSPACE="$(cd "$RIG_DIR/.." && pwd)"
-KIT_REPO_DIR="${KIT_REPO_DIR:-$WORKSPACE/waf/corewaf-starter-kit}"
+KIT_REPO_DIR="${KIT_REPO_DIR:-}"          # opt-in: stage a LOCAL starter-kit checkout instead of cloning
+KIT_REPO_URL="${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
+KIT_REF="${KIT_REF:-main}"
 LOG_DIR="${LOG_DIR:-$RIG_DIR/.cache/vm-runner-v2}"
 mkdir -p "$LOG_DIR"
 # shellcheck disable=SC1091
 source "$HERE/inventory.env"
+# shellcheck disable=SC1091
+source "$HERE/lib/registry.sh"
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 
 NAME="${1:-kit-v2}"
 VMLAB="$RIG_DIR/vm/vmlab.sh"   # single-host driver: default NAT + alpine-prepared (TPM/WG/docker)
 
-# Kit images (private GHCR) — saved from the host docker, loaded offline in
-# the VM. Same set vm/runner.sh ships.
-IMAGES_DEFAULT=(
-    "ghcr.io/ext-corero/waf/network-loader:0.1.0"
-    "ghcr.io/ext-corero/waf/caddy-bridge:tunnel-v0"
-    "ghcr.io/ext-corero/waf/caddy-waf:latest"
-    "ghcr.io/ext-corero/services/core/caddy-docker-proxy:1.0.0"
-    "grafana/alloy:v1.7.5"
-    "valkey/valkey:8"
-)
-read -r -a IMAGES <<<"${RIG_KIT_IMAGES:-${IMAGES_DEFAULT[*]}}"
 
 log() { printf '\e[36m==>\e[0m %s\n' "$*"; }
 die() { printf '\e[31merror:\e[0m %s\n' "$*" >&2; exit 1; }
@@ -40,7 +33,7 @@ die() { printf '\e[31merror:\e[0m %s\n' "$*" >&2; exit 1; }
 # ── pre-flight ─────────────────────────────────────────────────────
 getent hosts "$RIG_APP_FQDN" >/dev/null 2>&1 \
     || die "$RIG_APP_FQDN doesn't resolve on this host — add it to /etc/hosts ($RIG_APP_IP) or point your resolver at $RIG_DNS_1_IP"
-[[ -d "$KIT_REPO_DIR" ]] || die "starter-kit not found at $KIT_REPO_DIR"
+[[ -z "$KIT_REPO_DIR" || -d "$KIT_REPO_DIR" ]] || die "KIT_REPO_DIR set but not found: $KIT_REPO_DIR"
 [[ -f "$RIG_DIR/.v2/ca/root_ca.crt" ]] || die "rig root CA missing at $RIG_DIR/.v2/ca/root_ca.crt"
 
 # ── mint a tunnel token against the app VM ─────────────────────────
@@ -54,13 +47,12 @@ log "  → token ${TOKEN:0:32}... (len ${#TOKEN})"
 
 # ── stage host artifacts ───────────────────────────────────────────
 cp "$RIG_DIR/.v2/ca/root_ca.crt" "$LOG_DIR/root.crt"
-IMAGES_TAR="$LOG_DIR/kit-images.tar"
-if [[ ! -s "$IMAGES_TAR" || "${REBUILD_IMAGES:-0}" == "1" ]]; then
-    log "saving ${#IMAGES[@]} kit images for offline load"
-    docker save -o "$IMAGES_TAR" "${IMAGES[@]}"
+# Registry auth for the kit VM's docker (root). Skipped in bundle mode.
+DOCKER_AUTH_JSON=""
+if [[ "${RIG_BUNDLE:-0}" != 1 ]]; then
+    DOCKER_AUTH_JSON="$(reg_docker_config_json)" || exit 1
 fi
-KIT_TAR="$LOG_DIR/kit.tgz"
-( cd "$KIT_REPO_DIR" && tar --exclude='./.git' --exclude='./.claude' --exclude='./runtime' -czf "$KIT_TAR" . )
+export DOCKER_AUTH_JSON
 
 # ── boot the kit VM (default NAT) with the v2 install shim mounted ─
 log "booting kit VM $NAME (default NAT)"
@@ -77,12 +69,33 @@ RESOLV="${RESOLV}nameserver ${RIG_BOOTSTRAP_RESOLVER:-8.8.8.8}\nsearch ${RIG_DOM
 # ── stage onto the VM + load images ────────────────────────────────
 log "staging root CA + kit + images onto VM"
 "$VMLAB" scp "$NAME" "$LOG_DIR/root.crt" /tmp/root.crt
-"$VMLAB" scp "$NAME" "$KIT_TAR"          /tmp/kit.tgz
-"$VMLAB" scp "$NAME" "$IMAGES_TAR"       /tmp/images.tar
-"$VMLAB" exec "$NAME" 'set -e; sudo rm -rf /opt/corewaf-starter-kit; sudo mkdir -p /opt/corewaf-starter-kit; sudo tar -xzf /tmp/kit.tgz -C /opt/corewaf-starter-kit'
-"$VMLAB" exec "$NAME" 'command -v docker >/dev/null || { sudo apk add --no-cache docker docker-cli-compose >/dev/null; sudo rc-update add docker default >/dev/null; sudo rc-service docker start >/dev/null; }'
-log "loading kit images into VM docker"
-"$VMLAB" exec "$NAME" 'sudo docker load -i /tmp/images.tar | tail -3'
+# starter-kit: from its public repo (KIT_REF), or a local checkout when KIT_REPO_DIR is set
+"$VMLAB" exec "$NAME" 'command -v docker >/dev/null || { sudo apk add --no-cache docker docker-cli-compose git >/dev/null; sudo rc-update add docker default >/dev/null; sudo rc-service docker start >/dev/null; }; command -v git >/dev/null || sudo apk add --no-cache git >/dev/null'
+if [[ -n "$KIT_REPO_DIR" ]]; then
+    log "staging LOCAL starter-kit from $KIT_REPO_DIR"
+    ( cd "$KIT_REPO_DIR" && tar --exclude='./.git' --exclude='./.claude' --exclude='./runtime' -czf "$LOG_DIR/kit.tgz" . )
+    "$VMLAB" scp "$NAME" "$LOG_DIR/kit.tgz" /tmp/kit.tgz
+    "$VMLAB" exec "$NAME" 'set -e; sudo rm -rf /opt/corewaf-starter-kit; sudo mkdir -p /opt/corewaf-starter-kit; sudo tar -xzf /tmp/kit.tgz -C /opt/corewaf-starter-kit'
+else
+    log "cloning starter-kit $KIT_REPO_URL@$KIT_REF into the VM"
+    "$VMLAB" exec "$NAME" "set -e; sudo rm -rf /opt/corewaf-starter-kit; sudo git clone -q --depth 1 --branch '$KIT_REF' '$KIT_REPO_URL' /opt/corewaf-starter-kit"
+fi
+# registry auth (re)written on every staging so a re-used VM gets a fresh 12h token
+if [[ -n "$DOCKER_AUTH_JSON" ]]; then
+    printf '%s' "$DOCKER_AUTH_JSON" > "$LOG_DIR/docker-config.json"; chmod 600 "$LOG_DIR/docker-config.json"
+    "$VMLAB" scp "$NAME" "$LOG_DIR/docker-config.json" /tmp/docker-config.json
+    "$VMLAB" exec "$NAME" 'sudo mkdir -p /root/.docker && sudo mv /tmp/docker-config.json /root/.docker/config.json && sudo chmod 600 /root/.docker/config.json'
+fi
+if [[ "${RIG_BUNDLE:-0}" == 1 ]]; then
+    log "loading kit images from bundle"
+    "$VMLAB" scp "$NAME" "$RIG_DIR/.v2/bundle/kit-images.tar" /tmp/images.tar
+    "$VMLAB" exec "$NAME" 'sudo docker load -i /tmp/images.tar | tail -3'
+else
+    log "pulling kit images from the CoreWAF registry inside the VM (re-tagged to the names the starter-kit compose expects)"
+    reg_kit_pull_script > "$LOG_DIR/kit-pull.sh"
+    "$VMLAB" scp "$NAME" "$LOG_DIR/kit-pull.sh" /tmp/kit-pull.sh
+    "$VMLAB" exec "$NAME" 'sudo sh /tmp/kit-pull.sh'
+fi
 
 # ── run the v2 install shim ────────────────────────────────────────
 log "enrolling kit (install-v2.sh)"

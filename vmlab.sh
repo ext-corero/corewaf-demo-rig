@@ -25,6 +25,8 @@ WORKSPACE="$(cd "$RIG_DIR/.." && pwd)"                         # repo root (core
 
 # shellcheck disable=SC1091
 source "$HERE/inventory.env"
+# shellcheck disable=SC1091
+source "$HERE/lib/registry.sh"
 
 LAB_DIR="${LAB_DIR:-$HOME/vm-lab}"
 INSTANCES="$LAB_DIR/instances"
@@ -185,19 +187,13 @@ EOF
 # (The base image will carry docker-credential-ecr-login + the creds themselves
 # so long-running VMs can re-pull — follow-up.) RIG_MODE=source needs none of it.
 registry_auth_files() {
-    [[ "${RIG_MODE:-pull}" == source ]] && return 0
-    local host; host="$(sed -n 's#^RIG_REGISTRY=\([^/]*\)/.*#\1#p' "$HERE/images.env")"
-    [[ -n "$host" ]] || die "images.env: RIG_REGISTRY missing"
-    local region; region="$(echo "$host" | sed -n 's#.*\.ecr\.\([a-z0-9-]*\)\.amazonaws\.com#\1#p')"
-    local tok
-    tok="$(aws ecr get-login-password --region "$region" 2>/dev/null)" \
-        || die "cannot mint a registry token for $host — set AWS_PROFILE (or AWS_ACCESS_KEY_ID/SECRET) to a CoreWAF registry user (group corewaf-ecr-pull), or use RIG_MODE=source"
-    local auth; auth="$(printf 'AWS:%s' "$tok" | base64 -w0)"
+    [[ "${RIG_MODE:-pull}" == source || "${RIG_BUNDLE:-0}" == 1 ]] && return 0
+    local json; json="$(reg_docker_config_json)" || exit 1
     cat <<EOF2
   - path: /root/.docker/config.json
     permissions: '0600'
     content: |
-      {"auths": {"$host": {"auth": "$auth"}}}
+      $json
 EOF2
 }
 
@@ -268,6 +264,8 @@ cmd_stack() {
     local files="-f compose/$R_ROLE.yml" build=""
     if [[ "${RIG_MODE:-pull}" == source ]]; then
         files="$files -f compose/build/$R_ROLE.yml"; build="--build"
+    elif [[ "${RIG_BUNDLE:-0}" == 1 ]]; then
+        build="--pull never"          # images were loaded by bundle.sh load
     fi
     ssh "${ssh_opts[@]}" "alpine@$R_IP" \
         "doas rc-service docker start >/dev/null 2>&1 || true; \

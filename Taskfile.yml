@@ -26,6 +26,16 @@ tasks:
     cmds:
       - bash up.sh
 
+  bundle:
+    desc: 'Offline bundle: pull every pinned image (needs registry access) and docker-save to .v2/bundle/'
+    cmds:
+      - bash bundle.sh save
+
+  bundle:load:
+    desc: 'Load .v2/bundle/rig-images.tar into the running infra VMs; then RIG_BUNDLE=1 task up'
+    cmds:
+      - bash bundle.sh load
+
   ca:init:
     desc: Create the rig root CA + runtime secrets if missing (.v2/, gitignored; up runs this)
     cmds:
@@ -118,7 +128,7 @@ tasks:
   # Full runbook: docs/demo-kit.md
   # =====================================================================
   demo:prep:
-    desc: 'Stage the demo kit VM, NOT enrolled (NAME=demo). Run before the demo.'
+    desc: 'Stage the demo kit VM, NOT enrolled (NAME=demo; KIT_REF=main; KIT_REPO_DIR=<local checkout> opt-in). Run before the demo.'
     vars:
       NAME: '{{.NAME | default "demo"}}'
     cmds:
