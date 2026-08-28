@@ -26,7 +26,7 @@ ALPINE_BRANCH="${ALPINE_VER%.*}"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_BRANCH}/releases/cloud/generic_alpine-${ALPINE_VER}-x86_64-bios-cloudinit-r0.qcow2"
 BASE="$CACHE/alpine-${ALPINE_VER}.qcow2"
 
-GOLDEN="$CACHE/corewaf-kit-base.qcow2"
+GOLDEN="${GOLDEN:-$CACHE/corewaf-rig-base.qcow2}"
 OUT_DIR="$CACHE/.packer-out"   # transient; promoted to $GOLDEN on success
 
 mkdir -p "$CACHE"
@@ -56,12 +56,15 @@ echo ">> building golden image with Packer (~3 min)..."
   packer init corewaf-kit-base.pkr.hcl
   packer build \
     -var "base_image=$BASE" \
+    -var "iso_checksum=${ALPINE_SHA256:+sha256:}${ALPINE_SHA256:-none}" \
+    -var "accelerator=${PACKER_ACCEL:-kvm}" \
     -var "output_dir=$OUT_DIR" \
     corewaf-kit-base.pkr.hcl
 )
 
 # Promote atomically, then drop the transient build dir.
-mv -f "$OUT_DIR/corewaf-kit-base.qcow2" "$GOLDEN"
+mv -f "$OUT_DIR/corewaf-rig-base.qcow2" "$GOLDEN"
+( cd "$(dirname "$GOLDEN")" && sha256sum "$(basename "$GOLDEN")" > "$(basename "$GOLDEN").sha256" )
 rm -rf "$OUT_DIR"
 
 echo ">> built $GOLDEN ($(du -h "$GOLDEN" | cut -f1))"

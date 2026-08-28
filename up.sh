@@ -35,6 +35,9 @@ ensure_masquerade() {
     fi
 }
 
+echo "== base image =="
+"$HERE/scripts/fetch-base.sh"
+
 echo "== ca + secrets =="
 "$HERE/ca-init.sh"
 

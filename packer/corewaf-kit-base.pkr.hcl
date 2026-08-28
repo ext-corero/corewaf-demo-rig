@@ -31,6 +31,16 @@ variable "base_image" {
   description = "Path to the cached Alpine generic cloud qcow2 to bake from."
 }
 
+# kvm on a real host; tcg on GitHub-hosted runners (no nested virt — slow but hands-off).
+variable "accelerator" {
+  type    = string
+  default = "kvm"
+}
+variable "iso_checksum" {
+  type    = string
+  default = "none"
+}
+
 variable "output_dir" {
   type        = string
   description = "Directory Packer writes the built image into (must not pre-exist)."
@@ -40,12 +50,12 @@ source "qemu" "kit_base" {
   # Treat the cloud image as a disk to boot, not an installer ISO. Packer
   # copies it into the output dir, so the cached download is never mutated.
   iso_url      = var.base_image
-  iso_checksum = "none"
+  iso_checksum = var.iso_checksum
   disk_image   = true
   format       = "qcow2"
   disk_size    = "10G"
 
-  accelerator    = "kvm"
+  accelerator    = var.accelerator
   cpus           = 2
   memory         = 2048
   headless       = true
@@ -84,7 +94,7 @@ source "qemu" "kit_base" {
   shutdown_command = "poweroff"
 
   output_directory = var.output_dir
-  vm_name          = "corewaf-kit-base.qcow2"
+  vm_name          = "corewaf-rig-base.qcow2"
 }
 
 build {

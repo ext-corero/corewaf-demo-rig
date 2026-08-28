@@ -34,15 +34,10 @@ INSTANCES="$LAB_DIR/instances"
 SEEDS="$LAB_DIR/seeds"
 SSH_KEY="$LAB_DIR/id_lab"
 
-PREPARED_IMG="$LAB_DIR/images/alpine-prepared.qcow2"
-RAW_IMG="$LAB_DIR/images/alpine-base.qcow2"
-if [[ -f "$PREPARED_IMG" ]]; then
-    BASE_IMG="$PREPARED_IMG"
-    USING_PREPARED=1
-else
-    BASE_IMG="$RAW_IMG"
-    USING_PREPARED=0
-fi
+RIG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Kit VMs boot from the SAME base image as the infra VMs (scripts/fetch-base.sh).
+BASE_IMG="${KIT_BASE_IMG:-$RIG_ROOT/.cache/corewaf-rig-base.qcow2}"
+USING_PREPARED=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_SHIM="${KIT_SHIM:-$SCRIPT_DIR/kit-shim}"

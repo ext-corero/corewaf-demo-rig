@@ -1,0 +1,75 @@
+# base-image — build the demo rig's VM base image with Packer and publish it to
+# the CoreWAF registry (ECR) as an OCI artifact:
+#   <ECR_REGISTRY>/io.corewaf.ghcr/rig/base-image:<alpine>-<recipe-sha>  (+ :latest)
+# Hosts never build this; scripts/fetch-base.sh pulls it (pull-only IAM user).
+#
+# GitHub-hosted runners have no KVM, so Packer runs the build VM under TCG
+# emulation: slow (~20-30 min) but hands-off. Triggers only on recipe changes
+# or manually.
+name: base-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packer/**"
+      - "scripts/build-kit-base.sh"
+      - ".github/workflows/base-image.yml"
+  workflow_dispatch: {}
+
+env:
+  ALPINE_VER: "3.23.4"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install qemu + tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 qemu-utils xorriso jq curl
+          qemu-system-x86_64 --version | head -1
+
+      - uses: hashicorp/setup-packer@v3
+        with:
+          version: "1.15.0"
+      - uses: oras-project/setup-oras@v1
+        with:
+          version: "1.3.0"
+
+      - name: Recipe version
+        id: ver
+        run: |
+          RECIPE_SHA=$(git log -1 --format=%h -- packer scripts/build-kit-base.sh)
+          echo "tag=${ALPINE_VER}-${RECIPE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Building base image ${ALPINE_VER}-${RECIPE_SHA}"
+
+      - name: Build with Packer (TCG)
+        env:
+          PACKER_ACCEL: tcg
+          PACKER_LOG: "0"
+        run: |
+          packer plugins install github.com/hashicorp/qemu
+          PACKER_ACCEL=tcg ALPINE_VER="$ALPINE_VER" bash scripts/build-kit-base.sh --force
+          ls -lh .cache/corewaf-rig-base.qcow2*; cat .cache/corewaf-rig-base.qcow2.sha256
+
+      - name: Configure AWS credentials (ECR)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Publish to ECR (oras)
+        run: bash scripts/publish-base.sh "${{ steps.ver.outputs.tag }}"
+
+      - name: Summary
+        run: |
+          { echo "### base image published"; echo; echo '```'
+            echo "RIG_BASE_REF=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/base-image:${{ steps.ver.outputs.tag }}"
+            echo "RIG_BASE_SHA256=$(cut -d' ' -f1 .cache/corewaf-rig-base.qcow2.sha256)"; echo '```'
+            echo "Pin these in images.env."; } >> "$GITHUB_STEP_SUMMARY"

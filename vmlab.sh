@@ -32,7 +32,7 @@ LAB_DIR="${LAB_DIR:-$HOME/vm-lab}"
 INSTANCES="$LAB_DIR/instances"
 SEEDS="$LAB_DIR/seeds"
 SSH_KEY="$LAB_DIR/id_lab"
-BASE_IMG="${V2_BASE_IMG:-$RIG_DIR/.cache/corewaf-kit-base.qcow2}"
+BASE_IMG="${V2_BASE_IMG:-$RIG_DIR/.cache/corewaf-rig-base.qcow2}"
 
 SHARED_SECRETS="$RIG_DIR/.v2/shared-secrets"
 DISK_SIZE="${DISK_SIZE:-16G}"
@@ -213,7 +213,7 @@ cmd_create() {
         done
         die "$name never reached ssh at $R_IP"
     fi
-    [[ -f "$BASE_IMG" ]] || die "base image missing: $BASE_IMG (build with scripts/build-kit-base.sh)"
+    [[ -f "$BASE_IMG" ]] || die "base image missing: $BASE_IMG (run scripts/fetch-base.sh)"
 
     qemu-img create -q -f qcow2 -F qcow2 -b "$BASE_IMG" "$disk" "$DISK_SIZE"
     write_seed "$name"
