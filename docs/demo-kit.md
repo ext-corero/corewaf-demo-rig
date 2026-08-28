@@ -1,7 +1,7 @@
 # Demo runbook — enrolling a WAF kit against the v2 rig
 
 Everything here assumes the v2 rig is up and `task verify` is green
-(GUI at http://gui-1.rig.internal:8080). Host prereqs: `task prep-host` (README).
+(GUI at http://gui-1.rig.internal:8080). Host prereqs: Docker + KVM + registry credential (README).
 
 ## TL;DR
 
@@ -9,7 +9,7 @@ Everything here assumes the v2 rig is up and `task verify` is green
 cd demo-rig
 task verify                 # rig green?
 task demo:reset             # (re)stage rig-demo, prints a fresh TOKEN
-task kit:console NAME=demo  # login alpine / alpine  (Ctrl-] detaches)
+task console NODE=kit-demo   # login alpine / alpine  (Ctrl-] detaches)
 ```
 inside the VM:
 ```bash
@@ -40,7 +40,7 @@ images). The VM is left running and **not enrolled**; it survives
    with it yields `decode token: header base64: illegal base64 data`.)
 2. **Enrol from inside the VM** (the customer experience):
    ```bash
-   task kit:console NAME=demo                # alpine / alpine
+   task console NODE=kit-demo                # alpine / alpine
    NO_UP=1 TOKEN=<TOKEN> bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-starter-kit/main/bootstrap.sh)
    corewaf-demo-up
    ```
@@ -82,8 +82,8 @@ otherwise the next heartbeat re-registers it.
 | tunnel log `x509`/TLS error on `/redeem` | `runtime/operator-ca.crt` missing/wrong — run `corewaf-demo-up` |
 | `/reconnect … remote error: tls: expired certificate` | kit's client cert expired (VM was off for weeks) → re-enrol |
 | `task verify`: edge `https://gw-N.rig.internal/health` red | edge server cert expired → `task exec ROLE=gw N=<n> CMD='doas docker restart rig2-tunnel-caddy-edge'` |
-| `task verify`: coredns unhealthy / "VM egress" red | the rig network must be libvirt NAT: `virsh net-dumpxml corewaf-rig` → `forward mode='nat'`; if not, `task down` then `task prep-host` (redefines it) |
-| kit can't resolve `gw-1.rig.internal` | VM `/etc/resolv.conf` not pointing at 192.168.150.21/22 → `task demo:prep` re-stages it |
+| `task verify`: "guest egress" red | Docker NAT for the `corewaf-rig` network; check `docker network inspect corewaf-rig` and the host firewall |
+| kit can't resolve `gw-1.rig.internal` | guest resolv.conf comes from the seed; `task demo:reset` recreates the VM |
 | GUI badge "Heartbeat slow" | lastSeen 90 s–5 min old: a kit whose VM is gone (delete the row), or the browser tab was backgrounded (the list only polls while visible) |
 | `tunnel-mint: no tenants in corero-core` (fresh rig) | `task seed` should create the demo carriers/tenants; the current waf-api demo loader fails on carrier resolution (upstream bug in `waf/api/demo/load.py`). Workaround: `task demo:token TENANT=corero-system-owner-tunnel-gateway` |
 | `bootstrap.sh`: `git is required` | VM not staged by the current `kit-prep.sh` → `task demo:prep` |

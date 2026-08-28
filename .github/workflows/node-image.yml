@@ -1,0 +1,38 @@
+# node-image — build the rig-node container image (QEMU/KVM hypervisor per rig VM)
+# and publish it to the CoreWAF registry (ECR): <ECR>/io.corewaf.ghcr/rig/node:<sha> (+latest)
+name: node-image
+on:
+  push:
+    branches: [main]
+    paths: ["node/**", ".github/workflows/node-image.yml"]
+  workflow_dispatch: {}
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        run: echo "tag=3.23-$(git log -1 --format=%h -- node)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Configure AWS credentials (ECR)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Ensure ECR repository
+        run: aws ecr describe-repositories --repository-names io.corewaf.ghcr/rig/node >/dev/null 2>&1 || aws ecr create-repository --repository-name io.corewaf.ghcr/rig/node --image-scanning-configuration scanOnPush=true >/dev/null
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./node
+          push: true
+          tags: |
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/node:${{ steps.ver.outputs.tag }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/node:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: |
+          { echo "### rig-node published"; echo '```'; echo "RIG_NODE_IMAGE=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/node:${{ steps.ver.outputs.tag }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

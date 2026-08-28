@@ -25,29 +25,34 @@ aws configure --profile corewaf-ecr        # the key your CoreWAF operator issue
 AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
 ```
 
-That clones this repo, runs `task prep-host` (packages, libvirt, groups/ACLs, the rig
-NAT network, `/etc/hosts` names — one sudo prompt, once) and `task up` (fetches the VM
-base image, pulls every container image from the registry, boots the six VMs). Then:
+The rig is a set of Docker containers, **each running one VM under QEMU/KVM** — inside,
+every node is a normal VM (own kernel, its own IP on the rig subnet, virtio disk, a TPM for
+kits); outside, it is `docker compose`. The bootstrap checks Docker + KVM + your registry
+credential, clones this repo and runs `docker compose up -d`: `rig-init` pulls the VM base
+image from the CoreWAF registry once (and generates the rig CA/secrets), then the six nodes
+boot and start their stacks. No sudo, no packages, nothing built locally.
 
 ```bash
 cd corewaf-demo-rig
-task verify      # health checklist
-task demo:reset  # stage a kit VM + mint a token — see docs/demo-kit.md
+task verify       # health checklist (runs inside the rig network — Windows-friendly)
+task demo:reset   # stage a kit VM + mint a token — see docs/demo-kit.md
+task stop / up    # graceful VM shutdown / boot; task reset wipes everything
 ```
 
-Host: any Linux with KVM (libvirt/qemu are installed by `prep-host`), incl. WSL2 with
-nested virtualization. Nothing is built locally: the VM base image and every container
-image are pulled from the CoreWAF registry; `RIG_MODE=source` (developer path) builds
-from a sibling `corewaf-workspace` instead.
+Hosts: Linux with KVM, or Windows 11 + Docker Desktop (WSL2, nested virtualization) —
+see [docs/windows.md](docs/windows.md). Developer path: `RIG_MODE=source` builds the
+images from a sibling `corewaf-workspace` (see `compose/build/`).
 
-- GUI: <http://gui-1.rig.internal:8080> · API: <http://app-1.rig.internal:8080> ·
-  Grafana: <http://obs-1.rig.internal:3000>
+- GUI: <http://gui-1.rig.internal:8080> (Linux: real IP; Windows: hosts → 127.0.0.1) ·
+  Grafana: `:3000` (override with `RIG_GRAFANA_PORT`) · `scripts/hosts-block.sh` prints the hosts lines.
 
 ## Layout
 
-`up.sh` / `down.sh` / `vmlab.sh` — infra VMs · `compose/` — per-role stacks ·
-`config/`, `net/`, `seed/` — rig config · `kit-prep.sh` / `kit-enrol.sh` / `kit-up.sh`,
-`kit-shim/`, `vm/vmlab.sh` — kit VMs · `packer/` — VM base image · `verify.sh` — health ·
-`docs/demo-kit.md` — demo runbook.
+`docker-compose.yml` — the rig (one node container per VM, `kit` and `tools` profiles) ·
+`node/` — the rig-node image (QEMU/KVM hypervisor, `rig-init`, `rig` CLI, kit staging) ·
+`compose/` — per-role stacks that run *inside* the guests · `config/`, `seed/` — rig config ·
+`kit-shim/` — kit install shim · `packer/` — VM base image (built + published by CI) ·
+`images.env` — every pinned image · `inventory.env` — names/IPs/MACs/sizing ·
+`docs/demo-kit.md` — demo runbook · `docs/windows.md` — Docker Desktop notes.
 
 License: Apache-2.0.
