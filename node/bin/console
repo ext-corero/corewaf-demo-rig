@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# console — interactive serial console (ttyS1) of this node's guest. Login alpine/alpine
+# on kits; Ctrl-] then Enter... use Ctrl-\ (socat) to detach.
+exec socat -,raw,echo=0,escape=0x1d unix-connect:/run/ttyS1.sock

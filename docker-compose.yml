@@ -1,0 +1,201 @@
+# CoreWAF demo rig v0.2 — every rig VM is a container running QEMU/KVM.
+#   docker compose up -d                       # rig-init + the six infra VMs
+#   docker compose --profile kit up -d kit-demo
+#   docker compose --profile tools run --rm cli rig verify
+# Inside each guest nothing changes vs a real VM: own kernel, its inventory
+# IP/MAC on the rig subnet, virtio disk, (kits) a TPM, 9p shares from the
+# hypervisor. Host needs only Docker + an AWS credential for the registry.
+name: corewaf-demo-rig
+
+x-node: &node
+  image: ${RIG_NODE_IMAGE:-corewaf-demo-rig/node:dev}
+  build: ./node
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 120s
+  cap_add: [NET_ADMIN]
+  devices: ["/dev/kvm:/dev/kvm", "/dev/net/tun:/dev/net/tun"]
+  env_file: [inventory.env, images.env]
+  environment:
+    RIG_MODE: ${RIG_MODE:-pull}
+  volumes:
+    - rig-base:/rig/base:ro
+    - rig-ca:/rig/ca:ro
+    - rig-shared-secrets:/rig/shared-secrets
+    - rig-auth:/rig/auth:ro
+    - rig-ssh:/rig/ssh:ro
+    - .:/rig/v2:ro
+  depends_on:
+    rig-init: { condition: service_completed_successfully }
+  healthcheck:
+    test: ["CMD", "vm-health"]
+    interval: 15s
+    timeout: 5s
+    retries: 8
+    start_period: 300s
+
+services:
+  rig-init:
+    image: ${RIG_NODE_IMAGE:-corewaf-demo-rig/node:dev}
+    build: ./node
+    command: rig-init
+    restart: "no"
+    env_file: [inventory.env, images.env]
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    volumes:
+      - rig-base:/rig/base
+      - rig-ca:/rig/ca
+      - rig-shared-secrets:/rig/shared-secrets
+      - rig-auth:/rig/auth
+      - rig-ssh:/rig/ssh
+      - ${AWS_DIR:-~/.aws}:/root/.aws:ro
+
+  app-1:
+    <<: *node
+    container_name: rig-app-1
+    environment:
+      ROLE: app
+      NODE_KEY: RIG_APP
+      RAM_MB: ${RIG_APP_RAM_MB:-4096}
+      VCPUS: ${RIG_APP_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_APP_IP:-192.168.150.10}
+    ports: ["8080:8080", "9000:9000"]
+    volumes:
+      - rig-base:/rig/base:ro
+      - rig-ca:/rig/ca:ro
+      - rig-shared-secrets:/rig/shared-secrets
+      - rig-auth:/rig/auth:ro
+      - rig-ssh:/rig/ssh:ro
+      - .:/rig/v2:ro
+      - rig-node-app-1:/state
+  dns-1:
+    <<: *node
+    container_name: rig-dns-1
+    environment:
+      ROLE: dns
+      NODE_KEY: RIG_DNS_1
+      RAM_MB: ${RIG_DNS_RAM_MB:-2048}
+      VCPUS: ${RIG_DNS_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_DNS_1_IP:-192.168.150.21}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, rig-node-dns-1:/state]
+  dns-2:
+    <<: *node
+    container_name: rig-dns-2
+    environment:
+      ROLE: dns
+      NODE_KEY: RIG_DNS_2
+      RAM_MB: ${RIG_DNS_RAM_MB:-2048}
+      VCPUS: ${RIG_DNS_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_DNS_2_IP:-192.168.150.22}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, rig-node-dns-2:/state]
+  gw-1:
+    <<: *node
+    container_name: rig-gw-1
+    environment:
+      ROLE: gw
+      NODE_KEY: RIG_GW_1
+      RAM_MB: ${RIG_GW_RAM_MB:-2048}
+      VCPUS: ${RIG_GW_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_GW_1_IP:-192.168.150.31}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, rig-node-gw-1:/state]
+  gw-2:
+    <<: *node
+    container_name: rig-gw-2
+    environment:
+      ROLE: gw
+      NODE_KEY: RIG_GW_2
+      RAM_MB: ${RIG_GW_RAM_MB:-2048}
+      VCPUS: ${RIG_GW_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_GW_2_IP:-192.168.150.32}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, rig-node-gw-2:/state]
+  obs-1:
+    <<: *node
+    container_name: rig-obs-1
+    environment:
+      ROLE: obs
+      NODE_KEY: RIG_OBS_1
+      RAM_MB: ${RIG_OBS_RAM_MB:-4096}
+      VCPUS: ${RIG_OBS_VCPUS:-2}
+      RIG_MODE: "${RIG_MODE:-pull}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_OBS_1_IP:-192.168.150.40}
+    ports: ["3000:3000"]
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, rig-node-obs-1:/state]
+
+  kit-demo:
+    <<: *node
+    container_name: rig-kit-demo
+    profiles: [kit]
+    environment:
+      ROLE: kit
+      NODE_KEY: RIG_KIT_DEMO
+      TPM: "1"
+      RAM_MB: ${RIG_KIT_RAM_MB:-1024}
+      VCPUS: ${RIG_KIT_VCPUS:-1}
+      KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
+      KIT_REF: "${KIT_REF:-main}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_KIT_DEMO_IP:-192.168.150.200}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-demo:/state]
+
+  cli:
+    image: ${RIG_NODE_IMAGE:-corewaf-demo-rig/node:dev}
+    build: ./node
+    profiles: [tools]
+    command: cli
+    env_file: [inventory.env, images.env]
+    networks: [rig]
+    volumes: [rig-ca:/rig/ca:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro]
+
+networks:
+  rig:
+    name: corewaf-rig
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${RIG_NET_CIDR:-192.168.150.0/24}
+          gateway: ${RIG_NET_HOST_GW:-192.168.150.1}
+          ip_range: 192.168.150.240/28
+          aux_addresses:
+            app-1-aux: 192.168.150.110
+            dns-1-aux: 192.168.150.121
+            dns-2-aux: 192.168.150.122
+            gw-1-aux: 192.168.150.131
+            gw-2-aux: 192.168.150.132
+            obs-1-aux: 192.168.150.140
+            kit-demo-aux: 192.168.150.210
+
+volumes:
+  rig-base: {}
+  rig-ca: {}
+  rig-shared-secrets: {}
+  rig-auth: {}
+  rig-ssh: {}
+  rig-node-app-1: {}
+  rig-node-dns-1: {}
+  rig-node-dns-2: {}
+  rig-node-gw-1: {}
+  rig-node-gw-2: {}
+  rig-node-obs-1: {}
+  rig-node-kit-demo: {}

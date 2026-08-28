@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# rig-init — one-shot, re-run on every `compose up`:
+#   base image   oras pull the pinned VM image into /rig/base (sha256 verified,
+#                generations kept — running overlays reference them by path)
+#   ca           rig root CA (openssl, EC P-256, 10y) if missing
+#   secrets      rig-secrets.env (step-ca passwords) if missing
+#   ssh          lab keypair if missing
+#   auth         docker-config.json for the guests (fresh 12h ECR token every run)
+set -euo pipefail
+source /usr/local/bin/rig-lib.sh
+mkdir -p "$BASE_DIR" "$CA_DIR" "$SECRETS_DIR" "$AUTH_DIR" "$SSH_DIR"
+
+log "registry: $(reg_host)"
+TOKEN="$(reg_token)"; [[ -n "$TOKEN" && "$TOKEN" != null ]] \
+  || die "cannot mint a registry token — pass AWS_PROFILE (with ~/.aws mounted) or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for a user in IAM group corewaf-ecr-pull"
+printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$(reg_host)" "$(printf 'AWS:%s' "$TOKEN" | base64 -w0)" > "$AUTH_DIR/docker-config.json"
+chmod 600 "$AUTH_DIR/docker-config.json"; log "auth: docker-config.json refreshed"
+
+# ---- base image ----
+GEN="${RIG_BASE_REF##*:}"; IMG="$BASE_DIR/corewaf-rig-base-${GEN}.qcow2"
+if [[ -s "$IMG" ]] && { [[ -z "${RIG_BASE_SHA256:-}" ]] || echo "$RIG_BASE_SHA256  $IMG" | sha256sum -c --quiet - 2>/dev/null; }; then
+    log "base: $IMG present (sha ok)"
+else
+    log "base: pulling $RIG_BASE_REF"
+    printf '%s' "$TOKEN" | oras login --username AWS --password-stdin "$(reg_host)" >/dev/null
+    tmp="$(mktemp -d "$BASE_DIR/.fetch.XXXX")"; trap 'rm -rf "$tmp"' EXIT
+    ( cd "$tmp" && oras pull "$RIG_BASE_REF" >/dev/null )
+    f="$(ls "$tmp"/*.qcow2)"; got="$(sha256sum "$f" | cut -d' ' -f1)"
+    [[ -z "${RIG_BASE_SHA256:-}" || "$got" == "$RIG_BASE_SHA256" ]] || die "base image sha256 mismatch: got $got want $RIG_BASE_SHA256"
+    mv -f "$f" "$IMG"; echo "$got  $(basename "$IMG")" > "$IMG.sha256"; log "base: fetched (sha256 $got)"
+fi
+ln -sfn "$(basename "$IMG")" "$BASE_DIR/current.qcow2"
+
+# ---- CA ----
+if [[ ! -s "$CA_DIR/root_ca.crt" || ! -s "$CA_DIR/root_ca_key" ]]; then
+    log "ca: generating rig root CA"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
+        -subj "/CN=CoreWAF Demo Rig Root CA" -keyout "$CA_DIR/root_ca_key" -out "$CA_DIR/root_ca.crt" \
+        -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+    chmod 600 "$CA_DIR/root_ca_key"
+else log "ca: present"; fi
+
+# ---- secrets ----
+if [[ ! -s "$SECRETS_DIR/rig-secrets.env" ]]; then
+    rnd() { head -c 24 /dev/urandom | base64 | tr -d '/+='; }
+    umask 077; printf 'STEPCA_PASSWORD=%s\nSTEPCA_PROVISIONER_PASSWORD=%s\n' "$(rnd)" "$(rnd)" > "$SECRETS_DIR/rig-secrets.env"; umask 022
+    log "secrets: rig-secrets.env generated"
+else log "secrets: present"; fi
+
+# ---- ssh ----
+if [[ ! -s "$SSH_DIR/id_lab" ]]; then ssh-keygen -q -t ed25519 -N '' -f "$SSH_DIR/id_lab" -C rig-lab; log "ssh: keypair generated"; else log "ssh: present"; fi
+chmod 600 "$SSH_DIR/id_lab"
+log "init done"
