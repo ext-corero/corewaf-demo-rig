@@ -34,12 +34,12 @@ INSTANCES="$LAB_DIR/instances"
 SEEDS="$LAB_DIR/seeds"
 SSH_KEY="$LAB_DIR/id_lab"
 
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RIG_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Kit VMs boot from the SAME base image as the infra VMs (scripts/fetch-base.sh).
 BASE_IMG="${KIT_BASE_IMG:-$RIG_ROOT/.cache/corewaf-rig-base.qcow2}"
 USING_PREPARED=1
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_SHIM="${KIT_SHIM:-$SCRIPT_DIR/kit-shim}"
 
 # Optional registry auth for the kit VM's docker (root): pass the full
