@@ -21,11 +21,16 @@ issued by the CoreWAF operators.
 ## Quick start
 
 ```bash
-git clone https://github.com/ext-corero/corewaf-demo-rig.git && cd corewaf-demo-rig
 aws configure --profile corewaf-ecr        # the key your CoreWAF operator issued (IAM group corewaf-ecr-pull)
-export AWS_PROFILE=corewaf-ecr
-task prep-host   # once: packages, libvirt, groups/ACLs, rig NAT network, /etc/hosts names (one sudo prompt)
-task up          # fetch the VM base image + pull all images from the registry, boot 6 VMs
+AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
+```
+
+That clones this repo, runs `task prep-host` (packages, libvirt, groups/ACLs, the rig
+NAT network, `/etc/hosts` names — one sudo prompt, once) and `task up` (fetches the VM
+base image, pulls every container image from the registry, boots the six VMs). Then:
+
+```bash
+cd corewaf-demo-rig
 task verify      # health checklist
 task demo:reset  # stage a kit VM + mint a token — see docs/demo-kit.md
 ```
