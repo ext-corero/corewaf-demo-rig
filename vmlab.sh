@@ -192,6 +192,9 @@ EOF
     xorriso -as mkisofs -quiet -V cidata -o "$SEEDS/$name-seed.iso" -J -r \
         -graft-points "user-data=$SEEDS/$name-user-data" "meta-data=$SEEDS/$name-meta-data"
     chmod 600 "$SEEDS/$name-user-data" "$SEEDS/$name-seed.iso"
+    # Private to us + readable by the qemu user that boots the VM (libvirt runs
+    # qemu unprivileged; without this the seed is unreadable and cloud-init never runs).
+    setfacl -m "u:$(host_qemu_user):r" "$SEEDS/$name-seed.iso" 2>/dev/null || chmod 644 "$SEEDS/$name-seed.iso"
 }
 
 # ---- registry auth for the VM's docker ---------------------------------------

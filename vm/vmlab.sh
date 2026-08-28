@@ -203,6 +203,9 @@ EOF
             "user-data=$SEEDS/$name-user-data" \
             "meta-data=$SEEDS/$name-meta-data"
     chmod 600 "$SEEDS/$name-user-data" "$seed"     # may carry a registry token
+    # Private to us + readable by the qemu user that boots the VM (libvirt runs
+    # qemu unprivileged; without this the seed is unreadable and cloud-init never runs).
+    setfacl -m "u:$(host_qemu_user):r" "$seed" 2>/dev/null || chmod 644 "$seed"
 
     "${VIRT_INSTALL[@]}" \
         --name "$name" \
