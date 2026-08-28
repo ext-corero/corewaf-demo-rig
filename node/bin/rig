@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# rig — operator verbs that run INSIDE the rig network (the `cli` service), so they
+# work identically on Linux and Windows Docker Desktop (where the host cannot
+# reach container IPs). Usage: docker compose --profile tools run --rm cli rig <verb>
+#   verify                  health checklist (guests, stacks, endpoints, dns, egress, WG, instances)
+#   mint [label] [tenant]   provisioning token (value only) via scripts/tunnel-mint.sh
+#   ssh <node> [cmd]        ssh into a guest by node name (app-1, dns-1, gw-2, kit-demo ...)
+set -uo pipefail
+source /usr/local/bin/rig-lib.sh
+V2=/rig/v2
+API="http://$RIG_APP_IP:8080"
+ip_of() { case "$1" in app-1) echo "$RIG_APP_IP";; dns-1) echo "$RIG_DNS_1_IP";; dns-2) echo "$RIG_DNS_2_IP";; gw-1) echo "$RIG_GW_1_IP";; gw-2) echo "$RIG_GW_2_IP";; obs-1) echo "$RIG_OBS_1_IP";; kit-demo) echo "$RIG_KIT_DEMO_IP";; *) echo "";; esac; }
+gssh() { local ip; ip="$(ip_of "$1")"; shift; ssh "${SSH_OPTS[@]}" "alpine@$ip" "$@"; }
+
+cmd_verify() {
+    local pass=0 fail=0
+    ok()   { printf '  \e[32m✓\e[0m %s\n' "$*"; pass=$((pass+1)); }
+    bad()  { printf '  \e[31m✗\e[0m %s\n' "$*"; fail=$((fail+1)); }
+    warn() { printf '  \e[33m~\e[0m %s\n' "$*"; }
+    code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
+    echo "== guests (ssh) + containers =="
+    for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1; do
+        out=$(gssh "$n" "doas docker ps -a --format '{{.Names}} {{.Status}}'" 2>/dev/null) || { bad "$n: ssh unreachable ($(ip_of "$n"))"; continue; }
+        [[ -z "$out" ]] && { bad "$n: no containers"; continue; }
+        while read -r cname cstatus; do
+            [[ -z "$cname" ]] && continue
+            case "$cstatus" in Up*unhealthy*) bad "$n/$cname: $cstatus";; Up*) ok "$n/$cname";; "Exited (0)"*) ;; *) bad "$n/$cname: $cstatus";; esac
+        done <<<"$out"
+    done
+    echo "== endpoints =="
+    [[ $(code "$API/health") == 200 ]] && ok "API  $API/health" || bad "API  $API/health"
+    [[ $(code -H "Host: gui-1.$RIG_DOMAIN" "http://$RIG_APP_IP:8080/") == 200 ]] && ok "GUI  gui-1.$RIG_DOMAIN:8080" || bad "GUI  gui-1.$RIG_DOMAIN:8080"
+    [[ $(code "http://$RIG_OBS_1_IP:3000/api/health") == 200 ]] && ok "Grafana $RIG_OBS_1_IP:3000" || bad "Grafana $RIG_OBS_1_IP:3000"
+    for gw in "$RIG_GW_1_FQDN:$RIG_GW_1_IP" "$RIG_GW_2_FQDN:$RIG_GW_2_IP"; do f=${gw%%:*}; ip=${gw##*:}
+        [[ $(code --cacert "$CA_DIR/root_ca.crt" --resolve "$f:443:$ip" "https://$f/health") == 200 ]] && ok "edge https://$f/health (valid cert)" || bad "edge https://$f/health"; done
+    echo "== dns plane =="
+    for ns in $RIG_RESOLVERS; do a=$(dig +short +time=2 +tries=1 "@$ns" "$RIG_APP_FQDN" 2>/dev/null | head -1); [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"; done
+    gssh app-1 'ping -c1 -W2 8.8.8.8 >/dev/null 2>&1' && ok "guest egress" || bad "guest egress (docker NAT)"
+    echo "== gateways: WG peers =="
+    for n in gw-1 gw-2; do c=$(gssh "$n" "doas wg show 2>/dev/null | grep -c 'latest handshake'" 2>/dev/null | head -1); c=${c:-0}; [[ "$c" -gt 0 ]] && ok "$n: $c peer(s) with a handshake" || warn "$n: no active peers"; done
+    echo "== registered WAF instances =="
+    curl -s --max-time 5 -H 'X-Scope-OrgID: corero-system-owner' "$API/caddys/api/v1/namespaces/corero-core/caddy/instances" \
+      | jq -r --arg now "$(date -u +%s)" '.instances[]? | .instance | "  \(.metadata.name[0:8])  \(.status.phase // "?")  lastSeen \(if .status.lastSeen then (($now|tonumber) - (.status.lastSeen | sub("\\.[0-9]+";"") | sub("\\+00:00";"Z") | fromdateiso8601)) | tostring + "s ago" else "never" end)"' 2>/dev/null || warn "could not list instances"
+    echo; printf '== summary: \e[32m%d pass\e[0m · \e[31m%d fail\e[0m ==\n' "$pass" "$fail"; [[ $fail -eq 0 ]]
+}
+cmd_mint() {
+    local label="${1:-demo}" tenant="${2:-}"
+    TENANT="$tenant" RIG_API_BASE="$API" PKG_API_ENDPOINT="http://$RIG_APP_FQDN:8080" bash "$V2/scripts/tunnel-mint.sh" "$label" 2>/dev/null | sed -n 's/^provisioning_token=//p'
+}
+case "${1:-}" in
+  verify) cmd_verify ;;
+  mint)   shift; cmd_mint "$@" ;;
+  ssh)    shift; n="$1"; shift; gssh "$n" "$@" ;;
+  *) sed -n '2,8p' "$0"; exit 2 ;;
+esac

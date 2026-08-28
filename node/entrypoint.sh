@@ -2,10 +2,12 @@
 # rig-node entrypoint: turn this container into the hypervisor for ONE rig VM.
 set -euo pipefail
 source /usr/local/bin/rig-lib.sh
+# Dispatch: `rig-init`, `cli` (idle), any helper verb (rig, vm-ssh, ...), or a shell.
 case "${1:-node}" in
-  rig-init) exec rig-init ;;
+  node)     ;;
   cli)      exec sleep infinity ;;
   sh|bash)  exec "$@" ;;
+  *)        command -v "$1" >/dev/null 2>&1 && exec "$@"; die "unknown command: $1" ;;
 esac
 
 : "${ROLE:?ROLE (app|dns|gw|obs|kit)}"; : "${NODE_KEY:?NODE_KEY (RIG_APP, RIG_DNS_1, ...)}"

@@ -4,3 +4,4 @@
 .v2/
 .cache/
 .env.local
+.env

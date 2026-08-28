@@ -1,212 +1,101 @@
 version: "3"
 
-# CoreWAF demo rig — multi-VM libvirt rig (app + dns-1/2 + gw-1/2 + obs VMs,
-# each running its own docker stack) plus external kit VMs enrolled over the
-# TLS edge + WireGuard. Runbook: docs/demo-kit.md
-#
-# Images come from the CoreWAF registry (ECR); you need a CoreWAF registry
-# credential (IAM user in group corewaf-ecr-pull). See README.md.
+# CoreWAF demo rig v0.2 — every rig VM is a Docker container running QEMU/KVM.
+# Thin wrappers around docker compose; docs/demo-kit.md is the runbook.
+# Needs: Docker (+compose v2), /dev/kvm, an AWS credential for the CoreWAF
+# registry in the environment (AWS_PROFILE=... with ~/.aws, or AWS_ACCESS_KEY_ID/...).
 
 vars:
-  KIT_DIR: '../waf/corewaf-starter-kit'
-  V2_API: 'http://app-1.rig.internal:8080'
+  DC: docker compose
+  CLI: docker compose --profile tools run --rm cli
 
 tasks:
-
   default:
     desc: List available tasks
-    cmds:
-      - task --list
-
-  # =====================================================================
-  # v2 rig — infra VMs
-  # =====================================================================
-  prep-host:
-    desc: 'One-time host setup (packages, libvirt, groups/ACLs, rig NAT network, /etc/hosts names) — the only step needing sudo'
-    cmds:
-      - bash prep-host.sh
+    cmds: [task --list]
 
   up:
-    desc: 'Bring up the rig (CA, network, VMs, stacks). Images pulled from images.env; RIG_MODE=source builds from ../ workspace'
-    cmds:
-      - bash up.sh
-
-  base:fetch:
-    desc: 'Fetch the VM base image pinned in images.env into .cache/ (verifies sha256; up runs this)'
-    cmds:
-      - bash scripts/fetch-base.sh
-
-  base:build:
-    desc: 'Developer fallback: build the VM base image locally with packer (needs kvm)'
-    cmds:
-      - RIG_BASE_BUILD=1 bash scripts/fetch-base.sh
-
-  base:publish:
-    desc: 'Publish .cache/corewaf-rig-base.qcow2 to the registry (TAG=<tag>; needs a push identity)'
-    requires:
-      vars: [TAG]
-    cmds:
-      - bash scripts/publish-base.sh {{.TAG}}
-
-  bundle:
-    desc: 'Offline bundle: pull every pinned image (needs registry access) and docker-save to .v2/bundle/'
-    cmds:
-      - bash bundle.sh save
-
-  base:fetch:
-    desc: 'Fetch the VM base image pinned in images.env into .cache/ (verifies sha256; up runs this)'
-    cmds:
-      - bash scripts/fetch-base.sh
-
-  base:build:
-    desc: 'Developer fallback: build the VM base image locally with packer (needs kvm)'
-    cmds:
-      - RIG_BASE_BUILD=1 bash scripts/fetch-base.sh
-
-  base:publish:
-    desc: 'Publish .cache/corewaf-rig-base.qcow2 to the registry (TAG=<tag>; needs a push identity)'
-    requires:
-      vars: [TAG]
-    cmds:
-      - bash scripts/publish-base.sh {{.TAG}}
-
-  bundle:load:
-    desc: 'Load .v2/bundle/rig-images.tar into the running infra VMs; then RIG_BUNDLE=1 task up'
-    cmds:
-      - bash bundle.sh load
-
-  ca:init:
-    desc: Create the rig root CA + runtime secrets if missing (.v2/, gitignored; up runs this)
-    cmds:
-      - bash ca-init.sh
-
-  down:
-    desc: 'Tear down the v2 rig VMs (DOWN=--net to also drop the network)'
-    vars:
-      DOWN: '{{.DOWN | default ""}}'
-    cmds:
-      - bash down.sh {{.DOWN}}
+    desc: 'Bring up the rig (rig-init: base image + CA + secrets; then the six VMs, each starts its stack)'
+    cmds: ['{{.DC}} up -d']
 
   stop:
-    desc: Shut the v2 VMs down gracefully (disks kept; `task up` restarts them)
-    cmds:
-      - |
-        for v in $(virsh -c qemu:///system list --name | grep '^rig2-'); do virsh -c qemu:///system shutdown "$v"; done
+    desc: Graceful shutdown of all VMs (disks kept; `task up` boots them again)
+    cmds: ['{{.DC}} --profile kit stop']
+
+  down:
+    desc: Stop + remove the node containers (VM disks/CA/secrets kept)
+    cmds: ['{{.DC}} --profile kit down']
+
+  reset:
+    desc: 'DESTROY everything (VM disks, CA, secrets, base image cache) — cold start next `task up`'
+    cmds: ['{{.DC}} --profile kit --profile tools down -v']
 
   status:
-    desc: List the v2 infra VMs, their IPs and container health
-    cmds:
-      - bash verify.sh
+    desc: Node containers and health
+    cmds: ['{{.DC}} --profile kit ps']
 
   verify:
-    desc: Smoke-check the v2 rig (VMs, containers, GUI/API/Grafana, DNS, WG peers)
-    cmds:
-      - bash verify.sh
-
-  exec:
-    desc: 'Run a command in a v2 VM (ROLE=app|dns|gw|obs [N=1|2] CMD="...")'
-    requires:
-      vars: [ROLE, CMD]
-    vars:
-      N: '{{.N | default ""}}'
-    cmds:
-      - bash vmlab.sh exec {{.ROLE}} {{.N}} '{{.CMD}}'
+    desc: Health checklist, run inside the rig network (works on Windows too)
+    cmds: ['{{.CLI}} rig verify']
 
   logs:
-    desc: 'Tail a v2 VM stack (ROLE=app|dns|gw|obs|secrets [N=1|2])'
-    requires:
-      vars: [ROLE]
-    vars:
-      N: '{{.N | default ""}}'
-    cmds:
-      - bash vmlab.sh exec {{.ROLE}} {{.N}} 'cd /opt/v2 && doas docker compose --env-file inventory.env -f compose/{{.ROLE}}.yml logs -f --tail=50'
+    desc: 'VM serial console of a node (NODE=app-1|dns-1|dns-2|gw-1|gw-2|obs-1|kit-demo)'
+    requires: { vars: [NODE] }
+    cmds: ['{{.DC}} --profile kit logs -f --tail=100 {{.NODE}}']
+
+  ssh:
+    desc: 'Shell into a guest (NODE=app-1 ... [CMD="..."])'
+    requires: { vars: [NODE] }
+    vars: { CMD: '{{.CMD | default ""}}' }
+    cmds: ['{{.DC}} --profile kit exec {{if .CMD}}-T{{end}} -e VM_SSH_TTY={{if .CMD}}{{else}}1{{end}} {{.NODE}} vm-ssh {{.CMD}}']
+
+  console:
+    desc: 'Serial console login on a guest (NODE=kit-demo; alpine/alpine; Ctrl-] detaches)'
+    requires: { vars: [NODE] }
+    cmds: ['{{.DC}} --profile kit exec {{.NODE}} console']
+
+  stack:
+    desc: '(Re)start the role stack inside a guest, e.g. after an images.env bump (NODE=gw-1)'
+    requires: { vars: [NODE] }
+    cmds: ['{{.DC}} exec {{.NODE}} vm-stack']
 
   seed:
-    desc: Load the demo dataset into the v2 rig (tenants, zones, secrets, policies)
-    cmds:
-      - bash vmlab.sh exec app 'doas docker exec rig2-waf-api python /app/demo/load.py --base http://localhost'
+    desc: Load the demo dataset into the rig
+    cmds: ['{{.DC}} exec -T app-1 vm-ssh "doas docker exec rig2-waf-api python /app/demo/load.py --base http://localhost"']
 
-  # =====================================================================
-  # v2 kits — external libvirt VMs enrolled against gw-1
-  # =====================================================================
-  kit:up:
-    desc: 'Boot + enrol a kit VM in one shot (NAME=<id>, default kit-a)'
-    vars:
-      NAME: '{{.NAME | default "kit-a"}}'
-    cmds:
-      - bash kit-up.sh {{.NAME}}
-
-  kit:list:
-    desc: List kit VMs (rig-prefixed libvirt domains)
-    cmds:
-      - bash vm/vmlab.sh list
-
-  kit:exec:
-    desc: 'Run a command inside a kit VM (NAME=<id> CMD="...")'
-    requires:
-      vars: [NAME, CMD]
-    cmds:
-      - bash vm/vmlab.sh exec {{.NAME}} '{{.CMD}}'
-
-  kit:console:
-    desc: 'Serial console into a kit VM (NAME=<id>; login alpine/alpine; Ctrl-] detaches)'
-    requires:
-      vars: [NAME]
-    cmds:
-      - bash vm/vmlab.sh console {{.NAME}}
-
-  kit:destroy:
-    desc: 'Destroy a kit VM (NAME=<id>)'
-    requires:
-      vars: [NAME]
-    cmds:
-      - bash vm/vmlab.sh destroy {{.NAME}}
-
-  # =====================================================================
-  # Demo — a pre-staged kit VM enrolled live, from inside the VM.
-  # Full runbook: docs/demo-kit.md
-  # =====================================================================
+  # ── demo kit ──────────────────────────────────────────────────────────
   demo:prep:
-    desc: 'Stage the demo kit VM, NOT enrolled (NAME=demo; KIT_REF=main; KIT_REPO_DIR=<local checkout> opt-in). Run before the demo.'
-    vars:
-      NAME: '{{.NAME | default "demo"}}'
-    cmds:
-      - bash kit-prep.sh {{.NAME}}
+    desc: Boot + stage the demo kit VM (not enrolled)
+    cmds: ['bash kit-prep.sh demo']
 
   demo:token:
-    desc: 'Mint a provisioning token (value only) for the in-VM enrol (LABEL=demo; TENANT=<owner> if the rig has no demo tenants yet)'
-    vars:
-      LABEL: '{{.LABEL | default "demo"}}'
-      TENANT: '{{.TENANT | default ""}}'
-    cmds:
-      - TENANT={{.TENANT}} RIG_API_BASE={{.V2_API}} PKG_API_ENDPOINT={{.V2_API}} bash scripts/tunnel-mint.sh {{.LABEL}} 2>/dev/null | sed -n 's/^provisioning_token=//p'
+    desc: 'Mint a provisioning token (value only). LABEL=demo TENANT=<owner> (needed on a fresh rig)'
+    vars: { LABEL: '{{.LABEL | default "demo"}}', TENANT: '{{.TENANT | default ""}}' }
+    cmds: ['{{.CLI}} rig mint {{.LABEL}} {{.TENANT}}']
 
   demo:enrol:
-    desc: 'Enrol the demo kit from the host instead of in-VM (NAME=demo TOKEN=<eyJ...>)'
-    requires:
-      vars: [TOKEN]
-    vars:
-      NAME: '{{.NAME | default "demo"}}'
-    cmds:
-      - bash kit-enrol.sh {{.NAME}} '{{.TOKEN}}'
+    desc: 'Enrol the demo kit from the host (TOKEN=<eyJ...>)'
+    requires: { vars: [TOKEN] }
+    cmds: ['bash kit-enrol.sh demo {{.TOKEN}}']
 
   demo:reset:
-    desc: 'Destroy + re-stage the demo kit VM and print a fresh token (NAME=demo)'
-    vars:
-      NAME: '{{.NAME | default "demo"}}'
+    desc: Destroy + re-stage the demo kit VM (fresh TPM → fresh hwId) and print a token
     cmds:
-      - bash vm/vmlab.sh destroy {{.NAME}} || true
+      - '{{.DC}} --profile kit rm -sf kit-demo || true'
+      - 'docker volume rm -f corewaf-demo-rig_rig-node-kit-demo >/dev/null 2>&1 || true'
       - task: demo:prep
-        vars: { NAME: '{{.NAME}}' }
-      - echo "TOKEN:"
+      - 'echo TOKEN:'
       - task: demo:token
 
   demo:instances:
-    desc: List registered WAF instances (name, phase, lastSeen) — spot stale rows to delete in the GUI
-    cmds:
-      - |
-        curl -s -H 'X-Scope-OrgID: corero-system-owner' "{{.V2_API}}/caddys/api/v1/namespaces/corero-core/caddy/instances" \
-        | python3 -c 'import sys,json
-        for e in json.load(sys.stdin)["instances"]:
-          i=e["instance"]; print(i["metadata"]["name"], i["status"].get("phase"), i["status"].get("lastSeen"))'
+    desc: List registered WAF instances with heartbeat age
+    cmds: ['{{.CLI}} rig verify | sed -n "/registered WAF instances/,/summary/p"']
 
+  # ── base image (CI builds + publishes it; these are developer helpers) ──
+  base:build:
+    desc: 'Developer: build the VM base image locally with packer (needs kvm)'
+    cmds: ['bash scripts/build-kit-base.sh --force']
+  base:publish:
+    desc: 'Publish .cache/corewaf-rig-base.qcow2 to the registry (TAG=<tag>; push identity)'
+    requires: { vars: [TAG] }
+    cmds: ['bash scripts/publish-base.sh {{.TAG}}']
