@@ -166,6 +166,9 @@ services:
     command: cli
     env_file: [inventory.env, images.env]
     networks: [rig]
+    # resolve *.rig.internal the way the guests do: via the rig's dns VMs
+    dns: ["${RIG_DNS_1_IP:-192.168.150.21}", "${RIG_DNS_2_IP:-192.168.150.22}"]
+    dns_search: ["${RIG_DOMAIN:-rig.internal}"]
     volumes: [rig-ca:/rig/ca:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro]
 
 networks:
