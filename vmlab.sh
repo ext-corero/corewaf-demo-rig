@@ -40,7 +40,7 @@ SHARED_SECRETS="$RIG_DIR/.v2/shared-secrets"
 DISK_SIZE="${DISK_SIZE:-16G}"
 
 mkdir -p "$INSTANCES" "$SEEDS" "$SHARED_SECRETS"
-[[ -f "$SSH_KEY" ]] || ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C lab >/dev/null
+[[ -f "$SSH_KEY" ]] || { ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C lab >/dev/null; setfacl -b "$SSH_KEY" 2>/dev/null || true; chmod 600 "$SSH_KEY"; }
 
 die() { echo "error: $*" >&2; exit 1; }
 

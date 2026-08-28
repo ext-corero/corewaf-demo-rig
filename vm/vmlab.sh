@@ -75,7 +75,7 @@ RIG_HOST_IP="${RIG_HOST_IP:-192.168.122.1}"
 NAME_PREFIX="${NAME_PREFIX:-rig-}"
 
 mkdir -p "$INSTANCES" "$SEEDS"
-[[ -f "$SSH_KEY" ]] || ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C lab >/dev/null
+[[ -f "$SSH_KEY" ]] || { ssh-keygen -t ed25519 -N '' -f "$SSH_KEY" -C lab >/dev/null; setfacl -b "$SSH_KEY" 2>/dev/null || true; chmod 600 "$SSH_KEY"; }
 
 die() { echo "error: $*" >&2; exit 1; }
 

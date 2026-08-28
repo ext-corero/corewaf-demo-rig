@@ -89,6 +89,8 @@ if [[ ! -e "$LAB" && -d "$HOME/vm-lab" ]]; then run ln -sfn "$HOME/vm-lab" "$LAB
 d="$HERE"; while [[ "$d" != / ]]; do sudo_run setfacl -m "u:$QU:x" "$d" 2>/dev/null || true; d="$(dirname "$d")"; done
 d="$(readlink -f "$LAB")"; while [[ "$d" != / ]]; do sudo_run setfacl -m "u:$QU:x" "$d" 2>/dev/null || true; d="$(dirname "$d")"; done
 for p in "$HERE/.cache" "$HERE/.v2" "$(readlink -f "$LAB")"; do sudo_run setfacl -R -m "u:$QU:rwx" "$p" 2>/dev/null || true; sudo_run setfacl -R -d -m "u:$QU:rwx" "$p" 2>/dev/null || true; done
+# the ssh key must stay owner-only or ssh refuses it (ACLs count as "too open")
+[[ -f "$(readlink -f "$LAB")/id_lab" ]] && { setfacl -b "$(readlink -f "$LAB")/id_lab"; chmod 600 "$(readlink -f "$LAB")/id_lab"; }
 ok "ACLs applied"
 if command -v aa-status >/dev/null 2>&1 && [[ "$PM" == apt ]]; then
     warn "AppArmor host: if VMs fail to start with virtiofs 'permission denied', set security_driver = \"none\" in /etc/libvirt/qemu.conf (or add the checkout to the libvirt-qemu abstraction) and restart libvirtd"
