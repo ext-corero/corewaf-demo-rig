@@ -63,6 +63,11 @@ tasks:
     desc: Load the demo dataset into the rig
     cmds: ['{{.DC}} exec -T app-1 vm-ssh "doas docker exec rig2-waf-api python /app/demo/load.py --base http://localhost"']
 
+  kit:up:
+    desc: 'Boot + stage + mint + enrol a kit in one go (NAME=demo|a|b) — same as kit.sh'
+    vars: { NAME: '{{.NAME | default "demo"}}' }
+    cmds: ['bash kit.sh {{.NAME}}']
+
   # ── demo kit ──────────────────────────────────────────────────────────
   demo:prep:
     desc: Boot + stage the demo kit VM (not enrolled)

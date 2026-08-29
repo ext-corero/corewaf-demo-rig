@@ -9,7 +9,7 @@ set -uo pipefail
 source /usr/local/bin/rig-lib.sh
 V2=/rig/v2
 API="http://$RIG_APP_FQDN:8080"      # cli resolves rig.internal via the dns VMs (compose dns:)
-ip_of() { case "$1" in app-1) echo "$RIG_APP_IP";; dns-1) echo "$RIG_DNS_1_IP";; dns-2) echo "$RIG_DNS_2_IP";; gw-1) echo "$RIG_GW_1_IP";; gw-2) echo "$RIG_GW_2_IP";; obs-1) echo "$RIG_OBS_1_IP";; kit-demo) echo "$RIG_KIT_DEMO_IP";; *) echo "";; esac; }
+ip_of() { case "$1" in app-1) echo "$RIG_APP_IP";; dns-1) echo "$RIG_DNS_1_IP";; dns-2) echo "$RIG_DNS_2_IP";; gw-1) echo "$RIG_GW_1_IP";; gw-2) echo "$RIG_GW_2_IP";; obs-1) echo "$RIG_OBS_1_IP";; kit-demo) echo "$RIG_KIT_DEMO_IP";; kit-a) echo "$RIG_KIT_A_IP";; kit-b) echo "$RIG_KIT_B_IP";; *) echo "";; esac; }
 gssh() { local ip; ip="$(ip_of "$1")"; shift; ssh "${SSH_OPTS[@]}" "alpine@$ip" "$@"; }
 
 cmd_verify() {

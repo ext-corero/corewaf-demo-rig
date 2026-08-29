@@ -159,6 +159,40 @@ services:
         ipv4_address: ${RIG_KIT_DEMO_IP:-192.168.150.200}
     volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-demo:/state]
 
+  kit-a:
+    <<: *node
+    container_name: rig-kit-a
+    profiles: [kit]
+    environment:
+      ROLE: kit
+      NODE_KEY: RIG_KIT_A
+      TPM: "1"
+      RAM_MB: ${RIG_KIT_RAM_MB:-1024}
+      VCPUS: ${RIG_KIT_VCPUS:-1}
+      KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
+      KIT_REF: "${KIT_REF:-main}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_KIT_A_IP:-192.168.150.200}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-a:/state]
+
+  kit-b:
+    <<: *node
+    container_name: rig-kit-b
+    profiles: [kit]
+    environment:
+      ROLE: kit
+      NODE_KEY: RIG_KIT_B
+      TPM: "1"
+      RAM_MB: ${RIG_KIT_RAM_MB:-1024}
+      VCPUS: ${RIG_KIT_VCPUS:-1}
+      KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
+      KIT_REF: "${KIT_REF:-main}"
+    networks:
+      rig:
+        ipv4_address: ${RIG_KIT_B_IP:-192.168.150.200}
+    volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-b:/state]
+
   cli:
     image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-056b155}
     build: ./node
@@ -188,6 +222,8 @@ networks:
             gw-2-aux: 192.168.150.132
             obs-1-aux: 192.168.150.140
             kit-demo-aux: 192.168.150.210
+            kit-a-aux: 192.168.150.211
+            kit-b-aux: 192.168.150.212
 
 volumes:
   rig-base: {}
@@ -202,3 +238,5 @@ volumes:
   rig-node-gw-2: {}
   rig-node-obs-1: {}
   rig-node-kit-demo: {}
+  rig-node-kit-a: {}
+  rig-node-kit-b: {}
