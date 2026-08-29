@@ -32,7 +32,7 @@ ok "rig is up"
 
 step "Booting + staging the kit VM ($SVC)"
 # self-heal: a force-removed kit container can leave a dangling endpoint holding its static IP
-docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
+docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
 docker compose --profile kit up -d "$SVC" >/dev/null 2>&1 || docker compose --profile kit up -d "$SVC"
 docker compose --profile kit exec -T "$SVC" kit-stage 2>&1 | grep -E '^\s+(dns|edge|tpm)|staged' || true
 
