@@ -35,7 +35,7 @@ docker compose --profile kit up -d "$SVC" >/dev/null 2>&1 || docker compose --pr
 docker compose --profile kit exec -T "$SVC" kit-stage 2>&1 | grep -E '^\s+(dns|edge|tpm)|staged' || true
 
 step "Minting a provisioning token"
-mint() { docker compose --profile tools run --rm -T cli rig mint "$SVC" "$1" 2>/dev/null | grep -E '^eyJ' | tail -1; }
+mint() { docker compose --profile tools run --rm -T cli rig mint "$SVC" "$1" 2>/dev/null | grep -E '^eyJ' | tail -1 || true; }
 TOKEN="$(mint "${TENANT:-}")"
 if [[ -z "$TOKEN" && -z "${TENANT:-}" ]]; then
     TOKEN="$(mint corero-system-owner-tunnel-gateway)"   # fresh rig: no demo tenants yet
