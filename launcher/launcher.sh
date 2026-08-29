@@ -61,7 +61,10 @@ pick_ports() {
     ports="$(comm -23 <(echo "$ports" | sort -u) <(echo "$ours" | sort -u))"
     for spec in RIG_HTTP_PORT:8080 RIG_GRAFANA_PORT:3000 RIG_STEPCA_PORT:9000; do
         local var="${spec%%:*}" def="${spec##*:}" cur want p
-        cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-${cur:-$def}}"; p="$want"
+        # preference: explicit env override > the default port > whatever a previous run recorded
+        cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-$def}"; p="$want"
+        [[ -z "${!var:-}" && -n "$cur" ]] && ! echo "$ports" | grep -qx "$def" && p="$def"
+        [[ -z "${!var:-}" && -n "$cur" ]] && echo "$ports" | grep -qx "$def" && p="$cur"
         while echo "$ports" | grep -qx "$p"; do p=$((p+1)); done
         sed -i "/^$var=/d" .env; echo "$var=$p" >> .env; [[ "$p" == "$def" ]] && ok "$var=$p" || warn "$var=$p ($def in use)"
     done
