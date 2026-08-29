@@ -53,7 +53,8 @@ FS_ARGS=(-virtfs "local,path=$RIG_ROOT/v2,mount_tag=v2cfg,security_model=none,re
          -virtfs "local,path=$SECRETS_DIR,mount_tag=secrets,security_model=none"
          -virtfs "local,path=$CA_DIR,mount_tag=rigca,security_model=none,readonly=on"
          -virtfs "local,path=$STATE_DIR/share,mount_tag=nodestate,security_model=none")
-[[ "$ROLE" == kit && -d /rig/kit-shim ]] && FS_ARGS+=(-virtfs "local,path=/rig/kit-shim,mount_tag=kitshim,security_model=none,readonly=on")
+KITSHIM=/rig/kit-shim; [[ -d "$KITSHIM" ]] || KITSHIM=/rig/v2/kit-shim
+[[ "$ROLE" == kit && -d "$KITSHIM" ]] && FS_ARGS+=(-virtfs "local,path=$KITSHIM,mount_tag=kitshim,security_model=none,readonly=on")
 [[ "${RIG_MODE:-pull}" == source && -d /rig/workspace ]] && FS_ARGS+=(-virtfs "local,path=/rig/workspace,mount_tag=workspace,security_model=none,readonly=on")
 
 # ---- machine identity: deterministic per node (from the inventory MAC) ----

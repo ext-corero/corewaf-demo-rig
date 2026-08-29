@@ -1,0 +1,43 @@
+# compose/launcher.yml — used by the rig-launcher container: the checkout lives in the
+# named volume corewaf-demo-rig_repo (no host path), so the `.:/rig/v2` bind becomes a
+# volume mount (compose merges volumes by container path, so this replaces it).
+services:
+  app-1:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  dns-1:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  dns-2:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  gw-1:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  gw-2:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  obs-1:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  kit-demo:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  kit-a:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  kit-b:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  cli:
+    volumes:
+      - rig-repo:/rig/v2:ro
+  rig-init:
+    volumes:
+      - rig-aws:/root/.aws:ro
+volumes:
+  rig-repo:
+    name: corewaf-demo-rig_repo
+    external: true
+  rig-aws:
+    name: corewaf-demo-rig_aws
