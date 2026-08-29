@@ -23,12 +23,30 @@ services:
   kit-demo:
     volumes:
       - rig-repo:/rig/v2:ro
+      - type: volume
+        source: rig-repo
+        target: /rig/kit-shim
+        read_only: true
+        volume:
+          subpath: kit-shim
   kit-a:
     volumes:
       - rig-repo:/rig/v2:ro
+      - type: volume
+        source: rig-repo
+        target: /rig/kit-shim
+        read_only: true
+        volume:
+          subpath: kit-shim
   kit-b:
     volumes:
       - rig-repo:/rig/v2:ro
+      - type: volume
+        source: rig-repo
+        target: /rig/kit-shim
+        read_only: true
+        volume:
+          subpath: kit-shim
   cli:
     volumes:
       - rig-repo:/rig/v2:ro
