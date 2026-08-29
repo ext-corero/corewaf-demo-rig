@@ -5,6 +5,12 @@ Everything here assumes the v2 rig is up and `task verify` is green
 
 ## TL;DR
 
+Fully automatic (kit boots, stages, mints, enrols — no manual steps):
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) a   # kits: demo | a | b
+```
+Manual, in-VM enrol (the customer experience):
+
 ```bash
 cd demo-rig
 task verify                 # rig green?

@@ -56,9 +56,15 @@ FS_ARGS=(-virtfs "local,path=$RIG_ROOT/v2,mount_tag=v2cfg,security_model=none,re
 [[ "$ROLE" == kit && -d /rig/kit-shim ]] && FS_ARGS+=(-virtfs "local,path=/rig/kit-shim,mount_tag=kitshim,security_model=none,readonly=on")
 [[ "${RIG_MODE:-pull}" == source && -d /rig/workspace ]] && FS_ARGS+=(-virtfs "local,path=/rig/workspace,mount_tag=workspace,security_model=none,readonly=on")
 
+# ---- machine identity: deterministic per node (from the inventory MAC) ----
+# Guests (the kit's network-loader in particular) fingerprint the machine from DMI;
+# QEMU's defaults are identical for every VM, so give each node its own stable
+# UUID + serial — unique per slot, unchanged across restarts/re-stagings.
+NODE_UUID="$(printf '%s' "corewaf-rig:$NODE_MAC" | sha256sum | cut -c1-32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')"
 # ---- QEMU ----
-log "qemu: ${VCPUS} vcpu, ${RAM_MB} MB"
+log "qemu: ${VCPUS} vcpu, ${RAM_MB} MB, uuid $NODE_UUID"
 qemu-system-x86_64 -enable-kvm -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m "$RAM_MB" \
+  -uuid "$NODE_UUID" -smbios "type=1,manufacturer=CoreWAF,product=demo-rig-node,serial=$NODE_NAME,uuid=$NODE_UUID" \
   -display none -vga none -monitor none \
   -chardev stdio,id=con0,signal=off -serial chardev:con0 \
   -serial unix:/run/ttyS1.sock,server=on,wait=off \

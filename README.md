@@ -35,7 +35,9 @@ boot and start their stacks. No sudo, no packages, nothing built locally.
 ```bash
 cd corewaf-demo-rig
 task verify       # health checklist (runs inside the rig network — Windows-friendly)
-task demo:reset   # stage a kit VM + mint a token — see docs/demo-kit.md
+task kit:up NAME=a   # or, from anywhere on the host, fully automatic — boot a kit VM, mint, enrol:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) a
+task demo:reset   # stage the demo kit VM + mint a token for the manual, in-VM enrol — see docs/demo-kit.md
 task stop / up    # graceful VM shutdown / boot; task reset wipes everything
 ```
 
