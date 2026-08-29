@@ -213,17 +213,11 @@ networks:
       config:
         - subnet: ${RIG_NET_CIDR:-192.168.150.0/24}
           gateway: ${RIG_NET_HOST_GW:-192.168.150.1}
+          # dynamic pool for cli/ad-hoc containers only; every VM has a static
+          # ipv4_address and each node container uses its *_AUX_IP on br0 (outside
+          # the pool, so no IPAM reservation is needed — adding kit slots must never
+          # change this network definition, or running rigs cannot be reused).
           ip_range: 192.168.150.240/28
-          aux_addresses:
-            app-1-aux: 192.168.150.110
-            dns-1-aux: 192.168.150.121
-            dns-2-aux: 192.168.150.122
-            gw-1-aux: 192.168.150.131
-            gw-2-aux: 192.168.150.132
-            obs-1-aux: 192.168.150.140
-            kit-demo-aux: 192.168.150.210
-            kit-a-aux: 192.168.150.211
-            kit-b-aux: 192.168.150.212
 
 volumes:
   rig-base: {}
