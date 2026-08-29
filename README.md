@@ -18,6 +18,81 @@ issued by the CoreWAF operators.
  rig-<kit>     starter-kit VM: netns · tunnel · caddy
 ```
 
+## Requirements
+
+The rig boots **six virtual machines** (plus one per kit) under QEMU/KVM, each inside a
+Docker container, and each VM runs its own Docker stack. Sizing defaults: app/obs 4 GB,
+dns/gw 2 GB, kits 1 GB → **~16 GB of guest RAM**, 12 vCPUs; the VM base image (≈800 MB)
+and the container images (≈2 GB) are downloaded once.
+
+| | Minimum | Notes |
+|---|---|---|
+| CPU | x86-64 with VT-x/AMD-V, 8+ cores | nested virtualization on Windows (below) |
+| RAM | 24 GB host (32 GB comfortable) | guests use ~16 GB; override `RIG_*_RAM_MB` in `.env` |
+| Disk | 40 GB free | base image + VM overlays + container images |
+| Docker | Engine 24+ / Docker Desktop 4.30+, Compose v2.20+ | `docker compose version` |
+| KVM | `/dev/kvm` usable **from a container** | the bootstrap probes it: `docker run --rm --device /dev/kvm alpine test -w /dev/kvm` |
+| Credential | an AWS access key for the CoreWAF registry | IAM user in group `corewaf-ecr-pull`, issued by the CoreWAF operators |
+| Network | outbound HTTPS to `*.amazonaws.com`, `github.com`, Docker Hub, `dl-cdn.alpinelinux.org` | VMs egress through Docker's NAT |
+| Tools on the host | `git`, `curl`, `docker` | nothing else — no sudo, no packages, `task` optional |
+
+Host ports published by default: **8080** (GUI/API), **3000** (Grafana), **9000** (step-ca).
+The bootstrap picks the next free port when one is taken and records it in `.env`
+(`RIG_HTTP_PORT`, `RIG_GRAFANA_PORT`, `RIG_STEPCA_PORT`); `scripts/hosts-block.sh` prints
+the matching hosts-file lines.
+
+### Linux (Docker Engine)
+
+- Your user in the `docker` group; `/dev/kvm` present (`ls -l /dev/kvm`; load `kvm_intel`/`kvm_amd` if missing).
+- The rig creates the Docker network `corewaf-rig` = `192.168.150.0/24`; it must not overlap
+  an existing network/route on the host (a leftover libvirt bridge on that subnet must be removed first).
+- The Docker bridge is local, so `192.168.150.x` is reachable directly — `scripts/hosts-block.sh`
+  prints `/etc/hosts` lines with the real VM IPs.
+
+### Windows (Docker Desktop, WSL2 backend)
+
+Validated on Windows 11 + Docker Desktop with the WSL2 backend (Ubuntu distro).
+
+1. **Nested virtualization** — `%UserProfile%\.wslconfig`:
+   ```ini
+   [wsl2]
+   nestedVirtualization=true
+   memory=24GB          # cap for ALL of WSL2 incl. Docker; ≥ 24 GB recommended
+   processors=8
+   ```
+   then `wsl --shutdown` and start Docker Desktop again. Check from a WSL shell:
+   `ls -l /dev/kvm` and `docker run --rm --device /dev/kvm alpine test -w /dev/kvm && echo OK`.
+2. **Docker Desktop settings** — *General → Use the WSL 2 based engine*; *Resources → WSL
+   integration* enabled for the distro you will use; *Resources → File sharing* includes
+   the directory you clone into (default paths under your profile are shared). Keep the
+   checkout on the WSL filesystem (e.g. `~/rig`), not under `/mnt/c`, for speed.
+3. **Run from a WSL shell** (Ubuntu): the bootstrap and `kit.sh` are bash scripts:
+   ```bash
+   aws configure --profile corewaf-ecr            # or export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
+   AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
+   ```
+4. **Reaching the rig from Windows** — container IPs are not routable from Windows; use the
+   published ports. `C:\Windows\System32\drivers\etc\hosts`:
+   `127.0.0.1 gui-1.rig.internal app-1.rig.internal grafana.rig.internal` → GUI at
+   `http://gui-1.rig.internal:<RIG_HTTP_PORT>`, Grafana at `http://grafana.rig.internal:<RIG_GRAFANA_PORT>`.
+   Everything that must reach the VMs runs inside the rig network (`task verify`, `task ssh`,
+   `kit.sh`), so no route is needed.
+5. Non-interactive shells (ssh into WSL, CI): Docker Desktop's credential helper
+   (`docker-credential-desktop.exe`) is not on PATH, so pulls fail with
+   `error getting credentials`. Use a plain config for the rig: `export DOCKER_CONFIG=$HOME/.docker-rig; echo '{}' > $DOCKER_CONFIG/config.json`
+   (the bootstrap's ECR login then lands there). Interactive Docker Desktop shells are unaffected.
+
+See [docs/windows.md](docs/windows.md) for the longer version.
+
+### What the bootstrap does
+
+`bootstrap.sh` checks Docker/Compose, probes KVM inside a container, logs Docker into the
+CoreWAF registry with your AWS credential (via a throw-away `aws-cli` container — no aws CLI
+needed on the host), clones this repo, picks free host ports, and runs `docker compose up -d`:
+`rig-init` pulls the VM base image and generates the rig CA/secrets/ssh key into volumes,
+then the six node containers boot their VMs and each VM starts its stack. First run ≈ 7–11 min
+depending on bandwidth; later starts ≈ 1–2 min. It is safe to re-run.
+
 ## Quick start
 
 ```bash
@@ -25,28 +100,30 @@ aws configure --profile corewaf-ecr        # the key your CoreWAF operator issue
 AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
 ```
 
-The rig is a set of Docker containers, **each running one VM under QEMU/KVM** — inside,
-every node is a normal VM (own kernel, its own IP on the rig subnet, virtio disk, a TPM for
-kits); outside, it is `docker compose`. The bootstrap checks Docker + KVM + your registry
-credential, clones this repo and runs `docker compose up -d`: `rig-init` pulls the VM base
-image from the CoreWAF registry once (and generates the rig CA/secrets), then the six nodes
-boot and start their stacks. No sudo, no packages, nothing built locally.
-
 ```bash
 cd corewaf-demo-rig
-task verify       # health checklist (runs inside the rig network — Windows-friendly)
-task kit:up NAME=a   # or, from anywhere on the host, fully automatic — boot a kit VM, mint, enrol:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) a
-task demo:reset   # stage the demo kit VM + mint a token for the manual, in-VM enrol — see docs/demo-kit.md
-task stop / up    # graceful VM shutdown / boot; task reset wipes everything
+task verify          # health checklist (runs inside the rig network — Windows-friendly)
+bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) a   # enrol a WAF kit, fully automatic (kits: demo|a|b)
+task demo:reset      # stage the demo kit VM + mint a token for the manual, in-VM enrol — see docs/demo-kit.md
+task stop / task up  # graceful VM shutdown / boot;   task reset wipes everything
 ```
 
-Hosts: Linux with KVM, or Windows 11 + Docker Desktop (WSL2, nested virtualization) —
-see [docs/windows.md](docs/windows.md). Developer path: `RIG_MODE=source` builds the
-images from a sibling `corewaf-workspace` (see `compose/build/`).
-
 - GUI: <http://gui-1.rig.internal:8080> (Linux: real IP; Windows: hosts → 127.0.0.1) ·
-  Grafana: `:3000` (override with `RIG_GRAFANA_PORT`) · `scripts/hosts-block.sh` prints the hosts lines.
+  Grafana on `RIG_GRAFANA_PORT` · `scripts/hosts-block.sh` prints the hosts lines.
+- Developer path: `RIG_MODE=source` builds the images from a sibling `corewaf-workspace` (see `compose/build/`).
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| bootstrap: `/dev/kvm is not available to containers` | Linux: enable VT-x/AMD-V, `modprobe kvm_intel`; Windows: `.wslconfig nestedVirtualization=true` + `wsl --shutdown` |
+| node container exits with `KVM is required` | same as above (the node refuses to run under emulation) |
+| `Bind for 0.0.0.0:3000 failed: port is already allocated` | set `RIG_GRAFANA_PORT` (or `RIG_HTTP_PORT`/`RIG_STEPCA_PORT`) in `.env`; the bootstrap does this automatically |
+| `error getting credentials … docker-credential-desktop.exe` | non-interactive WSL shell → `DOCKER_CONFIG` workaround above |
+| `rig-init` fails: cannot mint a registry token | AWS credential missing/not in `corewaf-ecr-pull`; `AWS_PROFILE` needs `~/.aws` (mounted into rig-init) |
+| network `corewaf-rig`: pool overlaps / has active endpoints | another network on 192.168.150.0/24 (old libvirt bridge), or a stale kit endpoint: `docker network disconnect -f corewaf-rig rig-kit-a` |
+| VMs boot but stacks stay unhealthy for minutes | first boot pulls ~2 GB of images inside the guests; `task logs NODE=app-1` shows the VM console |
+| `task verify`: "guest egress" red | Docker NAT blocked by a host firewall (WSL: check Windows firewall / VPN clients) |
 
 ## Layout
 

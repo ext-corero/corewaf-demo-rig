@@ -19,5 +19,11 @@
 5. Everything that must reach the VMs runs inside the rig network:
    `docker compose --profile tools run --rm cli rig verify`, `task demo:*`, `task ssh NODE=app-1`.
 
+Validated 2026-08-29 on a Windows 11 / Docker Desktop (WSL2, Ubuntu 24.04) host with 24 cores / 32 GB: six VMs healthy in ~11 min on first run, kit enrolment OK.
+
+6. Non-interactive WSL shells (ssh in): `docker-credential-desktop.exe` is not on PATH →
+   `export DOCKER_CONFIG=$HOME/.docker-rig; mkdir -p $DOCKER_CONFIG; echo "{}" > $DOCKER_CONFIG/config.json` before the bootstrap.
+7. Ports 3000 (and sometimes 3030) are often taken on Windows hosts; the bootstrap picks the next free port and writes `RIG_GRAFANA_PORT` to `.env`.
+
 Known: Docker Desktop file sharing must include the checkout; keep the repo on the WSL
 filesystem for speed; `.gitattributes` forces LF so scripts served to the guests stay valid.
