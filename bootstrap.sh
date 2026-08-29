@@ -51,7 +51,21 @@ elif [[ -e "$DIR" ]]; then fail "$DIR exists but is not a git checkout";
 else git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "cloned"; fi
 cd "$DIR"
 [[ "${NO_UP:-0}" == 1 ]] && { echo; echo "Stopped after clone (NO_UP=1). Next: cd $DIR && docker compose up -d"; exit 0; }
+step "Host ports"
+# Published ports must be free on the host; pick the next free one and record it in .env.
+port_free() { ! (command -v ss >/dev/null && ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$"); }
+pick_port() { local want="$1" p="$1"; while ! port_free "$p"; do p=$((p+1)); done; echo "$p"; }
+touch .env
+for spec in RIG_HTTP_PORT:8080 RIG_GRAFANA_PORT:3000 RIG_STEPCA_PORT:9000; do
+    var="${spec%%:*}"; def="${spec##*:}"; cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-${cur:-$def}}"
+    got="$(pick_port "$want")"
+    sed -i "/^$var=/d" .env; echo "$var=$got" >> .env
+    [[ "$got" == "$def" ]] && ok "$var=$got" || warn "$var=$got ($def is in use on this host)"
+done
+grep -q '^AWS_PROFILE=' .env || { [[ -n "${AWS_PROFILE:-}" ]] && echo "AWS_PROFILE=$AWS_PROFILE" >> .env; }
+
 step "docker compose up -d   (rig-init pulls the VM base image once, then boots 6 VMs)"
 docker compose up -d
 echo; bash scripts/hosts-block.sh; echo
+echo "Ports: GUI/API http://localhost:$(sed -n 's/^RIG_HTTP_PORT=//p' .env)  Grafana http://localhost:$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env)"
 echo "Then: cd $DIR && docker compose --profile tools run --rm cli rig verify   (or 'task verify')"

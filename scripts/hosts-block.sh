@@ -2,7 +2,7 @@
 # hosts-block.sh — print the /etc/hosts (or Windows hosts) lines for the rig names.
 # Linux: the docker bridge is local, so the real VM IPs work. Windows/Docker Desktop:
 # container IPs are not reachable; use 127.0.0.1 + the published ports.
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; . "$HERE/inventory.env"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; . "$HERE/inventory.env"; [[ -f "$HERE/.env" ]] && . "$HERE/.env"
 if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null || [[ "${OS:-}" == Windows_NT ]]; then
   echo "# Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts) — via published ports:"
   echo "127.0.0.1  gui-1.$RIG_DOMAIN $RIG_APP_FQDN $RIG_OBS_1_FQDN grafana.$RIG_DOMAIN"
