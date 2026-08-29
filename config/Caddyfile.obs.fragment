@@ -47,7 +47,7 @@ mimir.rig.internal {
 }
 
 # Grafana (operator UI) — fronted for parity / uniform TLS, not kit-facing.
-grafana.rig.internal {
+grafana.rig.internal, grafana.localhost {
 	import rig_tls
 	reverse_proxy grafana:3000
 }

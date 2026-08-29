@@ -108,8 +108,8 @@ task demo:reset      # stage the demo kit VM + mint a token for the manual, in-V
 task stop / task up  # graceful VM shutdown / boot;   task reset wipes everything
 ```
 
-- GUI: <http://gui-1.rig.internal:8080> (Linux: real IP; Windows: hosts → 127.0.0.1) ·
-  Grafana on `RIG_GRAFANA_PORT` · `scripts/hosts-block.sh` prints the hosts lines.
+- GUI: **<http://gui-1.localhost:8080>** (any OS, no hosts file — the port is `RIG_HTTP_PORT` from `.env`) ·
+  Grafana: `http://grafana.localhost:<RIG_GRAFANA_PORT>` · `scripts/hosts-block.sh` prints the optional `rig.internal` hosts lines.
 - Developer path: `RIG_MODE=source` builds the images from a sibling `corewaf-workspace` (see `compose/build/`).
 
 ## Troubleshooting

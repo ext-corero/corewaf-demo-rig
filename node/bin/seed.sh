@@ -14,6 +14,8 @@ dns_list="$(echo $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-} | sed 's/ /, /g')"
 GW="$RIG_NET_HOST_GW"
 
 bootstrap="NODE_NAME=$short\nFQDN=$NODE_FQDN\nZONE=$RIG_DOMAIN\nNODE_IP=$NODE_IP\n"
+# the host port the hypervisor publishes the GUI/API on (browser-facing *.localhost URLs)
+[[ -n "${RIG_HTTP_PORT:-}" ]] && bootstrap+="RIG_HTTP_PORT=$RIG_HTTP_PORT\n"
 if [[ "$ROLE" == gw ]]; then
     cidr="$(node_var IPAM_CIDR)"; addr="$(node_var WG_ADDR)"
     [[ -n "$cidr" ]] && bootstrap+="IPAM_CIDR=$cidr\n"; [[ -n "$addr" ]] && bootstrap+="WG_ADDR=$addr\n"

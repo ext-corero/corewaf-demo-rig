@@ -92,8 +92,11 @@ services:
       LOG_LEVEL: INFO
       LOG_FORMAT: json
       DEBUG_MODE: "false"
-      # CORS origin = the GUI's external name on the routed LAN.
-      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://localhost:5173"]'
+      # CORS origins = the GUI's names: on the rig LAN (rig.internal) and from the
+      # operator's browser via the published port (*.localhost resolves to 127.0.0.1
+      # in every browser without a hosts entry). RIG_HTTP_PORT = the host port the
+      # hypervisor published 8080 on (from /etc/corewaf-bootstrap).
+      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-8080}","http://app-1.localhost:${RIG_HTTP_PORT:-8080}","http://localhost:5173"]'
       # NOTE: no PROVISIONING_GATEWAY_URL. The token's gw claim is resolved by
       # the minter from the tenant→carrier→apex endpoint chain
       # (resolved_endpoints["zeroTrustGateway"], tokens.py) — the tenant +
@@ -126,7 +129,7 @@ services:
       retries: 12
       start_period: 120s   # first boot pulls + runs loader-zero migrations; cold start is slow
     labels:
-      caddy: "http://app-1.rig.internal"
+      caddy: "http://app-1.rig.internal, http://app-1.localhost"
       caddy.0_handle_path: "/tenants/*"
       caddy.0_handle_path.reverse_proxy: "{{upstreams http 8001}}"
       caddy.1_handle_path: "/domains/*"
@@ -155,7 +158,8 @@ services:
     depends_on:
       waf-api: { condition: service_healthy }
     environment:
-      PUBLIC_API_HOST: "app-1.rig.internal:8080"
+      # Browser-side API address: *.localhost + the published host port (no hosts file).
+      PUBLIC_API_HOST: "app-1.localhost:${RIG_HTTP_PORT:-8080}"
       PUBLIC_API_SCHEME: http
     networks: [ app ]
     healthcheck:
@@ -165,7 +169,7 @@ services:
       retries: 5
       start_period: 10s
     labels:
-      caddy: "http://gui-1.rig.internal"
+      caddy: "http://gui-1.rig.internal, http://gui-1.localhost"
       caddy.reverse_proxy: "{{upstreams http 3000}}"
 
   caddy:

@@ -60,6 +60,7 @@ services:
     environment:
       ROLE: app
       NODE_KEY: RIG_APP
+      RIG_HTTP_PORT: ${RIG_HTTP_PORT:-8080}
       RAM_MB: ${RIG_APP_RAM_MB:-4096}
       VCPUS: ${RIG_APP_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"

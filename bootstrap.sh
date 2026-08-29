@@ -67,5 +67,5 @@ grep -q '^AWS_PROFILE=' .env || { [[ -n "${AWS_PROFILE:-}" ]] && echo "AWS_PROFI
 step "docker compose up -d   (rig-init pulls the VM base image once, then boots 6 VMs)"
 docker compose up -d
 echo; bash scripts/hosts-block.sh; echo
-echo "Ports: GUI/API http://localhost:$(sed -n 's/^RIG_HTTP_PORT=//p' .env)  Grafana http://localhost:$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env)"
+echo "Open in your browser:  http://gui-1.localhost:$(sed -n 's/^RIG_HTTP_PORT=//p' .env)     (Grafana: http://grafana.localhost:$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env))"
 echo "Then: cd $DIR && docker compose --profile tools run --rm cli rig verify   (or 'task verify')"
