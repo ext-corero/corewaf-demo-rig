@@ -160,6 +160,9 @@ services:
     environment:
       # Browser-side API address: *.localhost + the published host port (no hosts file).
       PUBLIC_API_HOST: "app-1.localhost:${RIG_HTTP_PORT:-8080}"
+      # The operator's browser cannot reach the dns VMs; let the GUI server proxy
+      # the DNS-bridge detail calls (GUI feature flag, default direct).
+      PUBLIC_DNS_BRIDGE_ACCESS: proxy
       PUBLIC_API_SCHEME: http
     networks: [ app ]
     healthcheck:
