@@ -1,0 +1,54 @@
+# extension-image — build the Docker Desktop extension (UI + host helper) and publish it
+#   ghcr.io/ext-corero/corewaf-demo-rig/extension:<semver> (+latest)   ← public, no login to install
+#   <ECR>/io.corewaf.ghcr/rig/extension:<semver> (+latest)             ← twin
+# Version = extension/VERSION (Docker Desktop requires a semver tag).
+name: extension-image
+on:
+  push:
+    branches: [main]
+    paths: ["extension/**", ".github/workflows/extension-image.yml"]
+  workflow_dispatch: {}
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        run: echo "tag=$(tr -d ' \n' < extension/VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure AWS credentials (ECR)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Ensure ECR repository
+        run: aws ecr describe-repositories --repository-names io.corewaf.ghcr/rig/extension >/dev/null 2>&1 || aws ecr create-repository --repository-name io.corewaf.ghcr/rig/extension --image-scanning-configuration scanOnPush=true >/dev/null
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./extension
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.ver.outputs.tag }}
+          tags: |
+            ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.tag }}
+            ghcr.io/${{ github.repository }}/extension:latest
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.tag }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: |
+          { echo "### Docker Desktop extension published"; echo '```'
+            echo "docker extension install ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.tag }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

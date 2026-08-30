@@ -95,7 +95,7 @@ depending on bandwidth; later starts ≈ 1–2 min. It is safe to re-run.
 
 ## Quick start
 
-Two equivalent entry points — pick one:
+Three equivalent entry points — pick one:
 
 **A. curl bootstrap** (Linux console or a WSL shell):
 ```bash
@@ -118,6 +118,18 @@ compose project as the curl path, so the two are interchangeable. Other verbs: `
 `-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY` instead of mounting `~/.aws`. Inside the rig the guests
 authenticate with the credential helper + your key (no expiry); only the host-side pull of the launcher
 image needs that 12 h login.
+
+**C. Docker Desktop extension** — buttons instead of a terminal (Windows / macOS / Linux Docker Desktop):
+```bash
+aws configure --profile corewaf-ecr        # once, on the host (the extension mounts ~/.aws for you)
+docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:latest
+```
+Then open **Extensions → CoreWAF Demo Rig**: *Up*, *Verify*, *Enrol kit*, *Stop/Down/Reset*, node health chips,
+live output, and *Open GUI / Grafana* links. The extension is a thin front end over the launcher (B): its bundled
+host helper runs the very same `docker run … rig/launcher <verb>` with `~/.aws` and the docker socket attached
+(including the 12 h ECR re-login on *Up*), against the same compose project — so A, B and C are interchangeable
+on one host. The image itself is public (no login to install); the rig images still need your pull profile.
+Source: `extension/` (React/MUI UI, Go host helper, no backend service).
 
 ```bash
 cd corewaf-demo-rig
@@ -149,7 +161,8 @@ task stop / task up  # graceful VM shutdown / boot;   task reset wipes everythin
 `docker-compose.yml` — the rig (one node container per VM, `kit` and `tools` profiles) ·
 `node/` — the rig-node image (QEMU/KVM hypervisor, `rig-init`, `rig` CLI, kit staging) ·
 `compose/` — per-role stacks that run *inside* the guests · `config/`, `seed/` — rig config ·
-`kit-shim/` — kit install shim · `packer/` — VM base image (built + published by CI) ·
+`kit-shim/` — kit install shim · `packer/` — VM base image (built + published by CI) · `launcher/` — the `docker run` entry point ·
+`extension/` — Docker Desktop extension (UI over the launcher) ·
 `images.env` — every pinned image · `inventory.env` — names/IPs/MACs/sizing ·
 `docs/demo-kit.md` — demo runbook · `docs/windows.md` — Docker Desktop notes.
 
