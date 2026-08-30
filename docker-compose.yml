@@ -64,6 +64,7 @@ services:
       RAM_MB: ${RIG_APP_RAM_MB:-4096}
       VCPUS: ${RIG_APP_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_APP_MAC:-52:54:00:96:00:0a}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_APP_IP:-192.168.150.10}
@@ -85,6 +86,7 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_DNS_1_MAC:-52:54:00:96:00:15}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_DNS_1_IP:-192.168.150.21}
@@ -98,6 +100,7 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_DNS_2_MAC:-52:54:00:96:00:16}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_DNS_2_IP:-192.168.150.22}
@@ -111,6 +114,7 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_GW_1_MAC:-52:54:00:96:00:1f}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_GW_1_IP:-192.168.150.31}
@@ -124,6 +128,7 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_GW_2_MAC:-52:54:00:96:00:20}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_GW_2_IP:-192.168.150.32}
@@ -137,6 +142,7 @@ services:
       RAM_MB: ${RIG_OBS_RAM_MB:-4096}
       VCPUS: ${RIG_OBS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+    mac_address: ${RIG_OBS_1_MAC:-52:54:00:96:00:28}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_OBS_1_IP:-192.168.150.40}
@@ -155,6 +161,7 @@ services:
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
       KIT_REF: "${KIT_REF:-main}"
+    mac_address: ${RIG_KIT_DEMO_MAC:-52:54:00:96:00:c8}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_KIT_DEMO_IP:-192.168.150.200}
@@ -172,6 +179,7 @@ services:
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
       KIT_REF: "${KIT_REF:-main}"
+    mac_address: ${RIG_KIT_A_MAC:-52:54:00:96:00:c9}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_KIT_A_IP:-192.168.150.201}
@@ -189,6 +197,7 @@ services:
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
       KIT_REF: "${KIT_REF:-main}"
+    mac_address: ${RIG_KIT_B_MAC:-52:54:00:96:00:ca}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
         ipv4_address: ${RIG_KIT_B_IP:-192.168.150.202}

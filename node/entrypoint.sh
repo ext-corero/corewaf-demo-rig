@@ -26,6 +26,16 @@ RAM_MB="${RAM_MB:-2048}"; VCPUS="${VCPUS:-2}"
 # ---- network: container becomes an L2 switch; the guest owns the docker IP ----
 GW="$(ip -4 route show default | awk '{print $3; exit}')"; MTU="$(cat /sys/class/net/eth0/mtu)"; export MTU
 ip addr flush dev eth0
+# The docker endpoint MAC (compose `mac_address` = inventory MAC) is what the network
+# fabric knows this endpoint by, and the guest NIC uses exactly that MAC: Docker
+# Desktop's data path delivers by endpoint MAC/IP rather than learning like a Linux
+# bridge, so a foreign guest MAC only half-works there. eth0 itself moves to a
+# throwaway MAC so the bridge never sees the guest's address as a local port address.
+INV_MAC="$NODE_MAC"; EP_MAC="$(cat /sys/class/net/eth0/address)"
+if [[ "$EP_MAC" != "$NODE_MAC" ]]; then
+    log "net: endpoint MAC $EP_MAC != inventory $NODE_MAC — guest uses the endpoint MAC (compose mac_address missing?)"; NODE_MAC="$EP_MAC"
+fi
+ip link set eth0 down; ip link set eth0 address "$(printf '02:%02x:%02x:%02x:%02x:%02x' $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)) $((RANDOM%256)))"; ip link set eth0 up
 ip link add br0 type bridge 2>/dev/null || true; ip link set br0 up
 ip link set eth0 master br0
 ip tuntap add tap0 mode tap 2>/dev/null || true; ip link set tap0 master br0 up
@@ -69,7 +79,7 @@ KITSHIM=/rig/kit-shim; [[ -d "$KITSHIM" ]] || KITSHIM=/rig/v2/kit-shim
 # Guests (the kit's network-loader in particular) fingerprint the machine from DMI;
 # QEMU's defaults are identical for every VM, so give each node its own stable
 # UUID + serial — unique per slot, unchanged across restarts/re-stagings.
-NODE_UUID="$(printf '%s' "corewaf-rig:$NODE_MAC" | sha256sum | cut -c1-32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')"
+NODE_UUID="$(printf '%s' "corewaf-rig:$INV_MAC" | sha256sum | cut -c1-32 | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/')"
 # ---- QEMU ----
 log "qemu: ${VCPUS} vcpu, ${RAM_MB} MB, uuid $NODE_UUID"
 qemu-system-x86_64 -enable-kvm -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m "$RAM_MB" \
