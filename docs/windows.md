@@ -27,3 +27,12 @@ Validated 2026-08-29 on a Windows 11 / Docker Desktop (WSL2, Ubuntu 24.04) host 
 
 Known: Docker Desktop file sharing must include the checkout; keep the repo on the WSL
 filesystem for speed; `.gitattributes` forces LF so scripts served to the guests stay valid.
+
+## Docker Desktop extension
+
+`docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:latest` (from PowerShell). If Docker Desktop
+answers *"only extensions distributed through the Docker Marketplace are allowed"*: Settings → Extensions → untick
+"Allow only extensions distributed through the Docker Marketplace" → Apply & restart, then install again.
+Note: the extension drives Docker Desktop's own engine (`desktop-linux`). A rig started earlier on a native dockerd
+inside a WSL distro is a separate rig — stop it first (host ports clash), and make sure `.wslconfig` has
+`nestedVirtualization=true` so Docker Desktop's VM also exposes `/dev/kvm`.

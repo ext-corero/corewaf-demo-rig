@@ -124,6 +124,12 @@ image needs that 12 h login.
 aws configure --profile corewaf-ecr        # once, on the host (the extension mounts ~/.aws for you)
 docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:latest
 ```
+Docker Desktop only installs Marketplace extensions by default — the install above fails with
+*"only extensions distributed through the Docker Marketplace are allowed"* until you allow it once:
+**Docker Desktop → Settings → Extensions → untick "Allow only extensions distributed through the Docker
+Marketplace" → Apply & restart**. (Two-line PowerShell/terminal alternative to clicking the checkbox isn't
+available; the setting is per machine.) On Windows, run the install from PowerShell, not from a WSL shell —
+the extension manager socket is only visible to the Windows CLI.
 Then open **Extensions → CoreWAF Demo Rig**: *Up*, *Verify*, *Enrol kit*, *Stop/Down/Reset*, node health chips,
 live output, and *Open GUI / Grafana* links. The extension is a thin front end over the launcher (B): its bundled
 host helper runs the very same `docker run … rig/launcher <verb>` with `~/.aws` and the docker socket attached
