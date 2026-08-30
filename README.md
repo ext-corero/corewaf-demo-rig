@@ -105,7 +105,9 @@ AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-
 
 **B. launcher container** — nothing on the host but Docker (works from PowerShell on Docker Desktop too):
 ```bash
-docker login 123517950721.dkr.ecr.us-east-1.amazonaws.com   # once, with the registry token (see below)
+# host docker login (ECR tokens last 12 h — needed only to pull the launcher image itself):
+docker run --rm -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=corewaf-ecr public.ecr.aws/aws-cli/aws-cli ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin 123517950721.dkr.ecr.us-east-1.amazonaws.com
 docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=corewaf-ecr \
   123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:latest up
 ```
@@ -113,9 +115,9 @@ The launcher keeps the rig checkout in a Docker volume (`corewaf-demo-rig_repo`)
 compose project as the curl path, so the two are interchangeable. Other verbs: `status`, `verify`,
 `kit demo|a|b`, `stop`, `down`, `reset`, `logs <node>`, `url`. On Windows/PowerShell use
 `-v //var/run/docker.sock:/var/run/docker.sock -v $env:USERPROFILE\.aws:/root/.aws:ro`, or pass
-`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY` instead of mounting `~/.aws`. Registry token for
-the one-time login: `aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123517950721.dkr.ecr.us-east-1.amazonaws.com`
-(or via the aws-cli container: `docker run --rm -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=corewaf-ecr public.ecr.aws/aws-cli/aws-cli ecr get-login-password --region us-east-1`).
+`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY` instead of mounting `~/.aws`. Inside the rig the guests
+authenticate with the credential helper + your key (no expiry); only the host-side pull of the launcher
+image needs that 12 h login.
 
 ```bash
 cd corewaf-demo-rig
