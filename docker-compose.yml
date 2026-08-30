@@ -8,7 +8,7 @@
 name: corewaf-demo-rig
 
 x-node: &node
-  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-d3d7034}
+  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-919c16f}
   build: ./node
   init: true
   restart: unless-stopped
@@ -36,7 +36,7 @@ x-node: &node
 
 services:
   rig-init:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-d3d7034}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-919c16f}
     build: ./node
     command: rig-init
     restart: "no"
@@ -204,7 +204,7 @@ services:
     volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-b:/state]
 
   cli:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-d3d7034}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-919c16f}
     build: ./node
     profiles: [tools]
     command: cli
