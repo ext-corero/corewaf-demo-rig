@@ -15,6 +15,17 @@ TOKEN="$(reg_token)"; [[ -n "$TOKEN" && "$TOKEN" != null ]] \
   || die "cannot mint a registry token — pass AWS_PROFILE (with ~/.aws mounted) or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for a user in IAM group corewaf-ecr-pull"
 printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$(reg_host)" "$(printf 'AWS:%s' "$TOKEN" | base64 -w0)" > "$AUTH_DIR/docker-config.json"
 chmod 600 "$AUTH_DIR/docker-config.json"; log "auth: docker-config.json refreshed"
+# Durable form for the guests: the AWS key itself + the ECR credential helper (baked
+# into the base image) so the guest mints its own tokens forever — no 12h expiry.
+AK="${AWS_ACCESS_KEY_ID:-}"; SK="${AWS_SECRET_ACCESS_KEY:-}"
+if [[ -z "$AK" && -n "${AWS_PROFILE:-}" && -f /root/.aws/credentials ]]; then
+    AK="$(awk -v p="[$AWS_PROFILE]" '$0==p{f=1;next} /^\[/{f=0} f&&/aws_access_key_id/{sub(/.*= */,"");print;exit}' /root/.aws/credentials)"
+    SK="$(awk -v p="[$AWS_PROFILE]" '$0==p{f=1;next} /^\[/{f=0} f&&/aws_secret_access_key/{sub(/.*= */,"");print;exit}' /root/.aws/credentials)"
+fi
+if [[ -n "$AK" && -n "$SK" ]]; then
+    umask 077; printf '[default]\naws_access_key_id = %s\naws_secret_access_key = %s\nregion = %s\n' "$AK" "$SK" "$(reg_region)" > "$AUTH_DIR/aws-credentials"; umask 022
+    log "auth: aws-credentials for the guests' credential helper"
+else rm -f "$AUTH_DIR/aws-credentials"; log "auth: no static key available — guests get a 12h token only"; fi
 
 # ---- base image ----
 GEN="${RIG_BASE_REF##*:}"; IMG="$BASE_DIR/corewaf-rig-base-${GEN}.qcow2"

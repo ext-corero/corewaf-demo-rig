@@ -21,6 +21,11 @@ if [[ "$ROLE" == gw ]]; then
     [[ -n "$cidr" ]] && bootstrap+="IPAM_CIDR=$cidr\n"; [[ -n "$addr" ]] && bootstrap+="WG_ADDR=$addr\n"
 fi
 auth_json="$(cat "$AUTH_DIR/docker-config.json")"
+# Prefer the durable form: credHelpers + the AWS key (guest mints tokens itself).
+aws_creds=""; if [[ -s "$AUTH_DIR/aws-credentials" ]]; then
+    auth_json="$(printf '{"credHelpers": {"%s": "ecr-login"}}' "$(reg_host)")"
+    aws_creds="$(cat "$AUTH_DIR/aws-credentials")"
+fi
 P9="trans=virtio,version=9p2000.L,cache=none,msize=512000"
 
 if [[ "$ROLE" == kit ]]; then
@@ -97,6 +102,7 @@ cat <<UD
     permissions: '0600'
     content: |
       $auth_json
+$( [[ -n "$aws_creds" ]] && { echo "  - path: /root/.aws/credentials"; echo "    permissions: '0600'"; echo "    content: |"; printf '%s\n' "$aws_creds" | sed 's/^/      /'; } )
 runcmd:
 $mounts
 final_message: "rig VM $short ready (uptime: \$UPTIME s)"
