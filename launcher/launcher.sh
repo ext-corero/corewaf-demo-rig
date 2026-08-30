@@ -70,21 +70,33 @@ pick_ports() {
     done
 }
 kvm_check() { docker run --rm --device /dev/kvm alpine:3.23 test -w /dev/kvm >/dev/null 2>&1 && ok "/dev/kvm usable from containers" || fail "KVM not available to containers (Windows: .wslconfig [wsl2] nestedVirtualization=true, then wsl --shutdown)"; }
+wait_healthy() {   # all infra node containers healthy (first boot can take ~10 min)
+    local want=6 n=0 t=0; printf '  waiting for the VMs to come up (stacks start inside the guests)'
+    while (( t < 1200 )); do n="$(docker ps --filter name=rig- --filter health=healthy -q | wc -l)"; (( n >= want )) && { echo " ok ($n/$want)"; return 0; }; printf .; sleep 15; t=$((t+15)); done
+    echo; warn "only $n/$want nodes healthy after 20 min — check: rig-launcher status / logs <node>"
+}
+wait_api() {       # the rig API must answer before minting tokens
+    local t=0; while (( t < 300 )); do compose --profile tools run --rm -T cli curl -sf -m5 "http://$RIG_APP_FQDN_DEFAULT:8080/health" >/dev/null 2>&1 && return 0; sleep 10; t=$((t+10)); done; return 1
+}
+RIG_APP_FQDN_DEFAULT=app-1.rig.internal
 urls() { local h g; h="$(sed -n 's/^RIG_HTTP_PORT=//p' .env)"; g="$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env)"; echo "GUI:     http://gui-1.localhost:${h:-8080}"; echo "Grafana: http://grafana.localhost:${g:-3000}"; }
 
 case "$cmd" in
   up)     step "rig-launcher up"; ensure_repo; kvm_check; aws_env; registry_login; pick_ports
-          step "docker compose up -d"; set -a; . .env; set +a; compose up -d; echo; urls ;;
+          step "docker compose up -d"; set -a; . .env; set +a; compose up -d; wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
   verify) ensure_repo; compose --profile tools run --rm -T cli rig verify ;;
   kit)    ensure_repo; aws_env; registry_login; set -a; . .env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
+          [[ "$(docker inspect -f '{{.State.Health.Status}}' rig-app-1 2>/dev/null)" == healthy ]] || fail "the rig is not up/healthy (run: rig-launcher up)"
           compose --profile kit up -d "$SVC"; compose --profile kit exec -T "$SVC" kit-stage | grep -E '^\s+(dns|edge|tpm)|staged' || true
+          wait_api || fail "rig API not answering"
           TOKEN="$(compose --profile tools run --rm -T cli rig mint "$SVC" "${TENANT:-}" 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
           [[ -n "$TOKEN" || -n "${TENANT:-}" ]] || TOKEN="$(compose --profile tools run --rm -T cli rig mint "$SVC" corero-system-owner-tunnel-gateway 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
           [[ -n "$TOKEN" ]] || fail "could not mint a token"; ok "token minted"
-          compose --profile kit exec -T "$SVC" kit-enrol "$TOKEN" | grep -E 'EVENT|enrolled'; compose --profile tools run --rm -T cli rig verify 2>/dev/null | sed -n '/WG peers/,/summary/p' ;;
+          compose --profile kit exec -T "$SVC" kit-enrol "$TOKEN" || fail "enrolment failed — rig-launcher logs $SVC, or: docker exec rig-$SVC vm-ssh 'sudo docker logs corewaf-tunnel'"
+          compose --profile tools run --rm -T cli rig verify 2>/dev/null | sed -n '/WG peers/,/summary/p' ;;
   stop)   ensure_repo; compose --profile kit stop ;;
   down)   ensure_repo; compose --profile kit down ;;
   reset)  ensure_repo; compose --profile kit --profile tools down -v ;;
