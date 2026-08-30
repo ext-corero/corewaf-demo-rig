@@ -9,6 +9,8 @@ OUT="${1:?out dir}"; mkdir -p "$OUT"
 pubkey="$(<"$SSH_DIR/id_lab.pub")"
 short="${NODE_FQDN%.$RIG_DOMAIN}"
 resolvers=""; for ns in $RIG_RESOLVERS; do resolvers+="nameserver $ns\n"; done
+# "node" = this node's hypervisor forwarder on the aux IP (see entrypoint.sh); an IP is used verbatim
+[[ "${RIG_BOOTSTRAP_RESOLVER:-}" == node ]] && RIG_BOOTSTRAP_RESOLVER="$AUX_IP"
 [[ -n "${RIG_BOOTSTRAP_RESOLVER:-}" ]] && resolvers+="nameserver $RIG_BOOTSTRAP_RESOLVER\n"
 dns_list="$(echo $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-} | sed 's/ /, /g')"
 GW="$RIG_NET_HOST_GW"

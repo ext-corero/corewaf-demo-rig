@@ -32,6 +32,14 @@ ip tuntap add tap0 mode tap 2>/dev/null || true; ip link set tap0 master br0 up
 ip addr add "$AUX_IP/24" dev br0 2>/dev/null || true
 ip route replace default via "$GW"
 log "net: guest $NODE_IP/$NODE_MAC via tap0<->br0<->eth0, container aux $AUX_IP, gw $GW, mtu $MTU"
+# Bootstrap resolver for the guest: forward DNS on the aux IP to whatever resolver
+# Docker gave THIS container (its embedded DNS -> the host's/VPN's resolver). Public
+# resolvers (8.8.8.8) are blocked on many corporate VPNs and Docker Desktop hosts;
+# the container's own resolver always works wherever `docker pull` works.
+UPSTREAM_DNS="$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf)"; UPSTREAM_DNS="${UPSTREAM_DNS:-127.0.0.11}"
+socat UDP4-RECVFROM:53,bind="$AUX_IP",reuseaddr,fork UDP4-SENDTO:"$UPSTREAM_DNS":53 &
+socat TCP4-LISTEN:53,bind="$AUX_IP",reuseaddr,fork TCP4:"$UPSTREAM_DNS":53 &
+log "net: bootstrap resolver $AUX_IP:53 -> $UPSTREAM_DNS"
 
 # ---- disk: overlay on the shared base (generation-pinned path) ----
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm"; rm -f "$STATE_DIR/share/ready"
