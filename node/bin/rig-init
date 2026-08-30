@@ -35,7 +35,13 @@ else
     log "base: pulling $RIG_BASE_REF"
     printf '%s' "$TOKEN" | oras login --username AWS --password-stdin "$(reg_host)" >/dev/null
     tmp="$(mktemp -d "$BASE_DIR/.fetch.XXXX")"; trap 'rm -rf "$tmp"' EXIT
-    ( cd "$tmp" && oras pull "$RIG_BASE_REF" >/dev/null )
+    # 786 MB from ECR (layers redirect to S3): retry — transient DNS/VPN hiccups are
+    # common on laptops, and a failed rig-init blocks the whole cold start.
+    for attempt in 1 2 3 4 5; do
+        ( cd "$tmp" && rm -f ./*.qcow2 && oras pull "$RIG_BASE_REF" >/dev/null ) && break
+        [[ $attempt -lt 5 ]] || die "base image pull failed after $attempt attempts (network/DNS to ECR + S3?)"
+        log "base: pull attempt $attempt failed — retrying in $((attempt*10))s"; sleep $((attempt*10))
+    done
     f="$(ls "$tmp"/*.qcow2)"; got="$(sha256sum "$f" | cut -d' ' -f1)"
     [[ -z "${RIG_BASE_SHA256:-}" || "$got" == "$RIG_BASE_SHA256" ]] || die "base image sha256 mismatch: got $got want $RIG_BASE_SHA256"
     mv -f "$f" "$IMG"; echo "$got  $(basename "$IMG")" > "$IMG.sha256"; log "base: fetched (sha256 $got)"
