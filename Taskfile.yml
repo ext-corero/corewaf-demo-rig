@@ -38,6 +38,18 @@ tasks:
     desc: Health checklist, run inside the rig network (works on Windows too)
     cmds: ['{{.CLI}} rig verify']
 
+  ps:
+    desc: 'What runs where: containers inside every guest (kits when up)'
+    cmds: ['{{.CLI}} rig ps {{.NODE}}']
+
+  stat:
+    desc: Per-guest uptime / load / memory / disk
+    cmds: ['{{.CLI}} rig stat {{.NODE}}']
+
+  logs:
+    desc: 'Logs of a container inside a guest: task logs NODE=gw-1 C=rig2-tunnel-gateway [ARGS="--tail 200"]'
+    cmds: ['{{.CLI}} rig logs {{.NODE}} {{.C}} {{.ARGS}}']
+
   logs:
     desc: 'VM serial console of a node (NODE=app-1|dns-1|dns-2|gw-1|gw-2|obs-1|kit-demo)'
     requires: { vars: [NODE] }

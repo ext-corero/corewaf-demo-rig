@@ -3,8 +3,11 @@
 #
 #   up        clone/refresh the rig into volume corewaf-demo-rig_repo, pick ports, compose up
 #   status    node containers + health          verify   health checklist (inside the rig network)
+#   ps | stat                                    containers / uptime+load+mem inside every guest
+#   logs NODE CTR [args]                         logs of a container inside a guest (--tail 50)
+#   exec NODE CTR CMD...                         run a command in a container inside a guest
 #   kit NAME  boot + stage + mint + enrol a kit (demo|a|b)
-#   stop | down | reset                          logs NODE (VM console)      url   print the browser URLs
+#   stop | down | reset                          console NODE (VM serial log)   url   browser URLs
 #   shell     bash in the launcher with the checkout mounted (debug)
 set -euo pipefail
 REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"; REF="${COREWAF_RIG_REF:-main}"
@@ -86,6 +89,7 @@ case "$cmd" in
           step "docker compose up -d"; set -a; . .env; set +a; compose up -d; wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
   verify) ensure_repo; compose --profile tools run --rm -T cli rig verify ;;
+  ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T cli rig "$cmd" "$@" ;;
   kit)    ensure_repo; aws_env; registry_login; set -a; . .env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
@@ -100,8 +104,8 @@ case "$cmd" in
   stop)   ensure_repo; compose --profile kit stop ;;
   down)   ensure_repo; compose --profile kit down ;;
   reset)  ensure_repo; compose --profile kit --profile tools down -v ;;
-  logs)   ensure_repo; compose --profile kit logs -f --tail=100 "${1:-app-1}" ;;
+  console) ensure_repo; compose --profile kit logs -f --tail=100 "${1:-app-1}" ;;
   url)    ensure_repo; urls ;;
   shell)  ensure_repo; exec bash ;;
-  *) sed -n '2,9p' "$0" ;;
+  *) sed -n '2,12p' "$0" ;;
 esac

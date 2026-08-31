@@ -145,6 +145,12 @@ export default function App() {
         <Tooltip title="Boot the kit VM, mint a token and enrol a WAF instance">
           <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('kit', kit)}>Enrol kit</Button></span>
         </Tooltip>
+        <Tooltip title="Containers running inside every guest VM">
+          <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('ps')}>Containers</Button></span>
+        </Tooltip>
+        <Tooltip title="Per-VM uptime, load, memory, disk">
+          <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('stat')}>Stat</Button></span>
+        </Tooltip>
         <Box sx={{ flex: 1 }} />
         <Button variant="outlined" disabled={!!busy} onClick={() => run('stop')}>Stop</Button>
         <Button variant="outlined" color="warning" disabled={!!busy} onClick={() => setConfirm('down')}>Down</Button>

@@ -2,9 +2,13 @@
 # rig — operator verbs that run INSIDE the rig network (the `cli` service), so they
 # work identically on Linux and Windows Docker Desktop (where the host cannot
 # reach container IPs). Usage: docker compose --profile tools run --rm cli rig <verb>
-#   verify                  health checklist (guests, stacks, endpoints, dns, egress, WG, instances)
-#   mint [label] [tenant]   provisioning token (value only) via scripts/tunnel-mint.sh
-#   ssh <node> [cmd]        ssh into a guest by node name (app-1, dns-1, gw-2, kit-demo ...)
+#   verify                    health checklist (guests, stacks, endpoints, dns, egress, WG, instances)
+#   ps [node...]              what runs where: containers inside every guest (kits when up)
+#   stat [node...]            per-guest uptime / load / memory / disk
+#   logs <node> <ctr> [args]  logs of a container inside a guest (default --tail 50; -f, --since ok)
+#   exec <node> <ctr> <cmd>   run a command in a container inside a guest
+#   ssh <node> [cmd]          ssh into a guest by node name (app-1, dns-1, gw-2, kit-demo ...)
+#   mint [label] [tenant]     provisioning token (value only) via scripts/tunnel-mint.sh
 set -uo pipefail
 source /usr/local/bin/rig-lib.sh
 V2=/rig/v2
@@ -43,13 +47,62 @@ cmd_verify() {
       | jq -r --arg now "$(date -u +%s)" '.instances[]? | .instance | "  \(.metadata.name[0:8])  \(.status.phase // "?")  lastSeen \(if .status.lastSeen then (($now|tonumber) - (.status.lastSeen | sub("\\.[0-9]+";"") | sub("\\+00:00";"Z") | fromdateiso8601)) | tostring + "s ago" else "never" end)"' 2>/dev/null || warn "could not list instances"
     echo; printf '== summary: \e[32m%d pass\e[0m · \e[31m%d fail\e[0m ==\n' "$pass" "$fail"; [[ $fail -eq 0 ]]
 }
+# column(1) is not in the node image; align tab-separated rows with awk
+align() { awk -F'\t' '{for(i=1;i<=NF;i++){d[NR,i]=$i;if(length($i)>w[i])w[i]=length($i)}n=NR}END{for(r=1;r<=n;r++){for(i=1;i<=NF;i++)printf "%-"w[i]"s%s",d[r,i],(i==NF?"":"  ");print ""}}'; }
+INFRA_NODES="app-1 dns-1 dns-2 gw-1 gw-2 obs-1"
+KIT_NODES="kit-demo kit-a kit-b"
+# node selection for ps/stat: explicit args, or all infra + kits that answer ssh
+select_nodes() {
+    if [[ $# -gt 0 ]]; then echo "$*"; return; fi
+    local sel="$INFRA_NODES" n
+    for n in $KIT_NODES; do gssh "$n" true >/dev/null 2>&1 && sel+=" $n"; done
+    echo "$sel"
+}
+cmd_ps() {
+    local nodes tmp n; nodes="$(select_nodes "$@")"; tmp="$(mktemp -d)"
+    for n in $nodes; do
+        ( gssh "$n" "doas docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}'" 2>/dev/null \
+            | awk -F'\t' -v n="$n" '{img=$3; sub(".*/","",img); printf "%s\t%s\t%s\t%s\n", n, $1, $2, img}' > "$tmp/$n" \
+            || echo -e "$n\t-\tunreachable\t-" > "$tmp/$n" ) &
+    done; wait
+    { echo -e "NODE\tCONTAINER\tSTATUS\tIMAGE"; for n in $nodes; do cat "$tmp/$n"; done; } | align
+    rm -rf "$tmp"
+}
+cmd_stat() {
+    local nodes tmp n; nodes="$(select_nodes "$@")"; tmp="$(mktemp -d)"
+    for n in $nodes; do
+        ( gssh "$n" 'up=$(uptime | sed "s/.*up *//;s/, *[0-9]* user.*//"); load=$(uptime | sed "s/.*load average: //"); \
+            mem=$(free -m | awk "/^Mem:/{printf \"%d/%dMB\", \$3, \$2}"); \
+            disk=$(df -h / | awk "NR==2{print \$3\"/\"\$2\" (\"\$5\")\"}"); \
+            printf "%s\t%s\t%s\t%s\n" "$up" "$load" "$mem" "$disk"' 2>/dev/null \
+            | awk -F'\t' -v n="$n" '{printf "%s\t%s\t%s\t%s\t%s\n", n, $1, $2, $3, $4}' > "$tmp/$n" \
+            || echo -e "$n\tunreachable\t-\t-\t-" > "$tmp/$n" ) &
+    done; wait
+    { echo -e "NODE\tUP\tLOAD\tMEM\tDISK"; for n in $nodes; do [[ -s "$tmp/$n" ]] && cat "$tmp/$n" || echo -e "$n\tunreachable\t-\t-\t-"; done; } | align
+    rm -rf "$tmp"
+}
+cmd_logs() {
+    local n="${1:?node}" c="${2:?container}"; shift 2
+    [[ $# -gt 0 ]] || set -- --tail 50
+    gssh "$n" "doas docker logs $(printf '%q ' "$@") $(printf '%q' "$c")"
+}
+cmd_exec() {
+    local n="${1:?node}" c="${2:?container}"; shift 2
+    [[ $# -gt 0 ]] || { echo "usage: rig exec <node> <container> <cmd...>" >&2; return 2; }
+    gssh "$n" "doas docker exec $(printf '%q' "$c") $(printf '%q ' "$@")"
+}
 cmd_mint() {
     local label="${1:-demo}" tenant="${2:-}"
     TENANT="$tenant" RIG_API_BASE="$API" PKG_API_ENDPOINT="http://$RIG_APP_FQDN:8080" bash "$V2/scripts/tunnel-mint.sh" "$label" 2>/dev/null | sed -n 's/^provisioning_token=//p'
 }
 case "${1:-}" in
   verify) cmd_verify ;;
+  ps)     shift; cmd_ps "$@" ;;
+  stat)   shift; cmd_stat "$@" ;;
+  logs)   shift; cmd_logs "$@" ;;
+  exec)   shift; cmd_exec "$@" ;;
   mint)   shift; cmd_mint "$@" ;;
   ssh)    shift; n="$1"; shift; gssh "$n" "$@" ;;
-  *) sed -n '2,8p' "$0"; exit 2 ;;
+  help)   sed -n '2,12p' "$0" ;;
+  *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

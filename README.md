@@ -151,6 +151,22 @@ task stop / task up  # graceful VM shutdown / boot;   task reset wipes everythin
 
 ## Troubleshooting
 
+### Looking inside the VMs
+
+Everything nests: node containers run QEMU guests, the guests run the actual CoreWAF
+containers. Four verbs make that transparent (same verbs from every entry point):
+
+| what | task | launcher / extension |
+|---|---|---|
+| containers in every guest | `task ps` | `ps` / **Containers** button |
+| guest uptime/load/mem/disk | `task stat` | `stat` / **Stat** button |
+| logs of an in-guest container | `task logs NODE=gw-1 C=rig2-tunnel-gateway` | `logs gw-1 rig2-tunnel-gateway` |
+| run a command in an in-guest container | `docker compose --profile tools run --rm cli rig exec dns-1 rig2-coredns ls /etc/coredns` | `exec …` |
+
+Plus: `rig ssh <node>` for a shell in a guest, `rig-launcher console <node>` (or
+`docker logs rig-<node>`) for the VM serial console.
+
+
 | Symptom | Cause / fix |
 |---|---|
 | bootstrap: `/dev/kvm is not available to containers` | Linux: enable VT-x/AMD-V, `modprobe kvm_intel`; Windows: `.wslconfig nestedVirtualization=true` + `wsl --shutdown` |
