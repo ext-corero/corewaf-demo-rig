@@ -74,9 +74,11 @@ func main() {
 		// Best-effort refresh so a newly published launcher is picked up by every
 		// verb, not only by `up`. An expired registry token just means we run the
 		// cached image; `up` does the full login+pull.
+		// Non-blocking: this verb runs the cached image; the pull (if any)
+		// lands for the next press.
 		q := exec.Command("docker", "pull", "-q", image)
 		q.Stdout, q.Stderr = nil, nil
-		_ = q.Run()
+		_ = q.Start()
 	}
 	if verb == "up" || verb == "pull" {
 		fmt.Printf("── registry login (%s, profile %s) ──\n", registry, profile)

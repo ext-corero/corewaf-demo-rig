@@ -54,8 +54,9 @@ KIT_NODES="kit-demo kit-a kit-b"
 # node selection for ps/stat: explicit args, or all infra + kits that answer ssh
 select_nodes() {
     if [[ $# -gt 0 ]]; then echo "$*"; return; fi
-    local sel="$INFRA_NODES" n
-    for n in $KIT_NODES; do gssh "$n" true >/dev/null 2>&1 && sel+=" $n"; done
+    local sel="$INFRA_NODES" n t; t="$(mktemp -d)"
+    for n in $KIT_NODES; do ( gssh "$n" true >/dev/null 2>&1 && touch "$t/$n" ) & done; wait
+    for n in $KIT_NODES; do [[ -e "$t/$n" ]] && sel+=" $n"; done; rm -rf "$t"
     echo "$sel"
 }
 cmd_ps() {
