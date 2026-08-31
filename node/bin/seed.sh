@@ -13,7 +13,12 @@ resolvers=""; for ns in $RIG_RESOLVERS; do resolvers+="nameserver $ns\n"; done
 [[ "${RIG_BOOTSTRAP_RESOLVER:-}" == node ]] && RIG_BOOTSTRAP_RESOLVER="$AUX_IP"
 [[ -n "${RIG_BOOTSTRAP_RESOLVER:-}" ]] && resolvers+="nameserver $RIG_BOOTSTRAP_RESOLVER\n"
 dns_list="$(echo $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-} | sed 's/ /, /g')"
-GW="$RIG_NET_HOST_GW"
+# Guest default route: the node container's aux IP, NOT the docker gateway. The
+# container masquerades guest egress to its aux identity (see entrypoint.sh) —
+# Docker Desktop's fabric gateway blackholes long-lived registered identities
+# over time, while dynamically-learned ones keep working; on Linux this is just
+# a second (harmless) NAT hop. Inter-VM traffic is on-link and never routes.
+GW="$AUX_IP"
 
 bootstrap="NODE_NAME=$short\nFQDN=$NODE_FQDN\nZONE=$RIG_DOMAIN\nNODE_IP=$NODE_IP\n"
 # the host port the hypervisor publishes the GUI/API on (browser-facing *.localhost URLs)

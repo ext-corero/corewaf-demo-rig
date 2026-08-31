@@ -50,6 +50,14 @@ UPSTREAM_DNS="$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf)"; UPSTREAM
 socat UDP4-RECVFROM:53,bind="$AUX_IP",reuseaddr,fork UDP4-SENDTO:"$UPSTREAM_DNS":53 &
 socat TCP4-LISTEN:53,bind="$AUX_IP",reuseaddr,fork TCP4:"$UPSTREAM_DNS":53 &
 log "net: bootstrap resolver $AUX_IP:53 -> $UPSTREAM_DNS"
+# Guest egress rides the container's aux identity: the guest's default route is
+# the aux IP (seed.sh) and we masquerade forwarded traffic. Keeps guest egress
+# independent of the fabric gateway's per-identity state (Docker Desktop).
+echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
+[[ "$(cat /proc/sys/net/ipv4/ip_forward)" == 1 ]] || log "WARN: ip_forward=0 — guest egress via aux NAT will not work"
+iptables -t nat -C POSTROUTING -s "$NODE_IP" -o br0 -j MASQUERADE 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -s "$NODE_IP" -o br0 -j MASQUERADE
+log "net: guest egress NAT $NODE_IP -> aux $AUX_IP"
 
 # ---- disk: overlay on the shared base (generation-pinned path) ----
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm"; rm -f "$STATE_DIR/share/ready"
