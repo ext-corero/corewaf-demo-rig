@@ -13,7 +13,9 @@ resolvers=""; for ns in $RIG_RESOLVERS; do resolvers+="nameserver $ns\n"; done
 [[ "${RIG_BOOTSTRAP_RESOLVER:-}" == node ]] && RIG_BOOTSTRAP_RESOLVER="$AUX_IP"
 [[ -n "${RIG_BOOTSTRAP_RESOLVER:-}" ]] && resolvers+="nameserver $RIG_BOOTSTRAP_RESOLVER\n"
 dns_list="$(echo $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-} | sed 's/ /, /g')"
-# Guest default route: the node container's aux IP, NOT the docker gateway. The
+# The node container (aux IP) is the guest's router for EVERYTHING — default AND
+# intra-rig — the guest carries a /32 and never ARPs for peers or the docker
+# gateway. The
 # container masquerades guest egress to its aux identity (see entrypoint.sh) —
 # Docker Desktop's fabric gateway blackholes long-lived registered identities
 # over time, while dynamically-learned ones keep working; on Linux this is just
@@ -81,7 +83,8 @@ bootcmd:
   - grep -q ttyS1 /etc/inittab || echo 'ttyS1::respawn:/sbin/getty -L 115200 ttyS1 vt100' >> /etc/inittab
   - kill -HUP 1
   - ip link set eth0 up || true
-  - ip addr replace $NODE_IP/24 dev eth0 || true
+  - ip addr replace $NODE_IP/32 dev eth0 || true
+  - ip route replace $GW/32 dev eth0 || true
   - ip route replace default via $GW || true
 write_files:
   - path: /etc/resolv.conf
@@ -96,9 +99,10 @@ cat <<UD
       iface lo inet loopback
       auto eth0
       iface eth0 inet static
-        address $NODE_IP/24
-        gateway $GW
+        address $NODE_IP/32
         mtu ${MTU:-1500}
+        post-up ip route replace $GW/32 dev eth0
+        post-up ip route replace default via $GW
   - path: /etc/corewaf-bootstrap
     permissions: '0644'
     content: |
@@ -126,8 +130,14 @@ config:
     mtu: ${MTU:-1500}
     subnets:
       - type: static
-        address: $NODE_IP/24
-        gateway: $GW
+        address: $NODE_IP/32
+        routes:
+          - network: $GW
+            netmask: 255.255.255.255
+            gateway: 0.0.0.0
+          - network: 0.0.0.0
+            netmask: 0.0.0.0
+            gateway: $GW
         dns_nameservers: [$dns_list]
         dns_search: [$RIG_DOMAIN]
 NC

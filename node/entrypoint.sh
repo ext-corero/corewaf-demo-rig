@@ -55,9 +55,14 @@ log "net: bootstrap resolver $AUX_IP:53 -> $UPSTREAM_DNS"
 # independent of the fabric gateway's per-identity state (Docker Desktop).
 echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 [[ "$(cat /proc/sys/net/ipv4/ip_forward)" == 1 ]] || log "WARN: ip_forward=0 — guest egress via aux NAT will not work"
-iptables -t nat -C POSTROUTING -s "$NODE_IP" -o br0 -j MASQUERADE 2>/dev/null \
-  || iptables -t nat -A POSTROUTING -s "$NODE_IP" -o br0 -j MASQUERADE
-log "net: guest egress NAT $NODE_IP -> aux $AUX_IP"
+# Masquerade only OFF-subnet egress; intra-rig guest<->guest flows are routed
+# through the containers with their real source IPs (symmetric, no NAT), so the
+# fabric only ever sees container-sourced frames + registered-destination
+# delivery — the two operations Docker Desktop's fabric handles reliably.
+SUBNET="${NODE_IP%.*}.0/24"
+iptables -t nat -C POSTROUTING -s "$NODE_IP" ! -d "$SUBNET" -o br0 -j MASQUERADE 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -s "$NODE_IP" ! -d "$SUBNET" -o br0 -j MASQUERADE
+log "net: guest routed via aux $AUX_IP (masquerade off-subnet only)"
 
 # ---- disk: overlay on the shared base (generation-pinned path) ----
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm"; rm -f "$STATE_DIR/share/ready"
