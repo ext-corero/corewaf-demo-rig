@@ -46,7 +46,7 @@ MSG
     exit 1
 fi
 step "Fetching ${REPO_URL} (${REF}) → ${DIR}"
-if [[ -d "$DIR/.git" ]]; then git -C "$DIR" fetch -q origin "$REF" && git -C "$DIR" checkout -q "$REF" && git -C "$DIR" pull -q --ff-only origin "$REF"; ok "refreshed";
+if [[ -d "$DIR/.git" ]]; then git -C "$DIR" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' --tags 2>/dev/null || true; git -C "$DIR" checkout -q "$REF" 2>/dev/null || git -C "$DIR" checkout -q -B "$REF" "origin/$REF"; git -C "$DIR" pull -q --ff-only origin "$REF" 2>/dev/null || true; ok "refreshed";
 elif [[ -e "$DIR" ]]; then fail "$DIR exists but is not a git checkout";
 else git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "cloned"; fi
 cd "$DIR"
