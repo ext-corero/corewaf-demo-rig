@@ -195,10 +195,12 @@ export default function App() {
       <Divider />
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
         <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
+        <Typography variant="caption" color="text.secondary">— click a node to open its terminal (Exec tab, then <code>vm-ssh</code>)</Typography>
         {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
         {rows.map((r) => (
           <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: container view (Exec tab = terminal; then vm-ssh)`}>
-            <Chip label={r.name.replace(/^rig-/, '')} color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
+            <Chip label={`❯ ${r.name.replace(/^rig-/, '')}`} clickable color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
+              sx={{ '& .MuiChip-label': { fontFamily: 'inherit' }, cursor: 'pointer' }}
               onClick={() => openContainer(r.name)} />
           </Tooltip>
         ))}
