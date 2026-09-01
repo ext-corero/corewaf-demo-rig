@@ -154,6 +154,13 @@ export default function App() {
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={rows.find((r) => r.name === 'rig-obs-1')?.health !== 'healthy'} onClick={() => open(`http://grafana.localhost:${grafanaPort}`)}>
             Grafana
           </Button>
+          <Tooltip title="Backstage developer portal — a plain container (no VM); first click starts it, then opens it"><span>
+            <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy}
+              onClick={() => {
+                if (rows.some((r) => r.name === 'rig-backstage' && r.state === 'running')) open('http://localhost:27007');
+                else run('portal');
+              }}>Backstage</Button>
+          </span></Tooltip>
           <Tooltip title="How to use this extension"><span>
             <Button size="small" sx={{ height: 32, minWidth: 36, fontWeight: 700 }} variant="outlined" onClick={() => setHelpOpen(true)} aria-label="help">?</Button>
           </span></Tooltip>
