@@ -116,7 +116,7 @@ storage:
 %{ endfor ~}
 
     # Volume provisioning script
-    - path: /opt/bin/provision-volumes.sh
+    - path: /etc/corewaf/bin/provision-volumes.sh
       mode: 0755
       contents:
         inline: |
@@ -193,7 +193,7 @@ storage:
           log "Volume provisioning complete"
 
     # Script to start all compose stacks
-    - path: /opt/bin/compose-up.sh
+    - path: /etc/corewaf/bin/compose-up.sh
       mode: 0755
       contents:
         inline: |
@@ -232,7 +232,7 @@ storage:
     # Install bootstrap artifacts: CD-ROM if present, else docker-fetch from the
     # OCI registry (ref in /etc/bootstrap bootstrap_artifacts=). The registry payload
     # is a plain scratch container image carrying sysext/ and bin/ trees.
-    - path: /opt/bin/install-bootstrap.sh
+    - path: /etc/corewaf/bin/install-bootstrap.sh
       mode: 0755
       contents:
         inline: |
@@ -256,34 +256,56 @@ storage:
           # Source 2: OCI registry via docker (registry-backed deployments)
           if [ -z "$SRC" ]; then
             REF="$${BOOTSTRAP_ARTIFACTS_REF:-$(sed -n 's/^bootstrap_artifacts=//p' /etc/bootstrap 2>/dev/null | head -1)}"
-            if [ -z "$REF" ]; then echo "No bootstrap source (no CD-ROM, no bootstrap_artifacts=)"; exit 0; fi
+            if [ -z "$REF" ]; then
+              if [ -d /var/lib/corewaf/artifacts ]; then SRC=/var/lib/corewaf/artifacts; echo "Using cached bootstrap artifacts"
+              else echo "No bootstrap source (no CD-ROM, no bootstrap_artifacts=, no cache)"; exit 0; fi
+            fi
+          fi
+          if [ -z "$SRC" ]; then
             echo "Fetching bootstrap artifacts: $REF"
-            docker pull "$REF"
+            if ! docker pull "$REF"; then
+              [ -d /var/lib/corewaf/artifacts ] || { echo "pull failed and no cache" >&2; exit 1; }
+              SRC=/var/lib/corewaf/artifacts; echo "Pull failed — using cached bootstrap artifacts"
+            fi
+          fi
+          if [ -z "$SRC" ]; then
             CID="$(docker create "$REF" /noop)"
             TMP="$(mktemp -d)"
             docker export "$CID" | tar -x -C "$TMP"
             SRC="$TMP"
           fi
 
-          # Install docker-compose sysext
+          # Install docker-compose sysext. NOTE: /opt is volatile on current Flatcar
+          # (sysext mounts a tmpfs over it), so persistent artifacts live under /var:
+          # sysext images in /var/lib/extensions (standard systemd location).
           if [ -d "$SRC/sysext" ]; then
-            mkdir -p /opt/extensions/docker-compose
+            mkdir -p /var/lib/extensions
             for f in "$SRC"/sysext/*.raw; do
               [ -f "$f" ] || continue
-              cp "$f" /opt/extensions/docker-compose/
-              ln -sf "/opt/extensions/docker-compose/$(basename $f)" /etc/extensions/docker-compose.raw
-              echo "Installed sysext: $(basename $f)"
+              cp "$f" "/var/lib/extensions/docker-compose.raw"
+              echo "Installed sysext: $(basename $f) -> /var/lib/extensions/docker-compose.raw"
             done
             systemd-sysext refresh
           fi
 
-          # Install helper binaries (e.g. registry credential helpers)
+          # Helper binaries (e.g. registry credential helpers): /opt/bin is on PATH but
+          # volatile — this unit runs every boot and repopulates it from the artifacts.
           if [ -d "$SRC/bin" ]; then
+            mkdir -p /opt/bin
             for f in "$SRC"/bin/*; do
               [ -f "$f" ] || continue
               install -m 0755 "$f" /opt/bin/
               echo "Installed bin: $(basename $f)"
             done
+          fi
+
+          # Cache the payload so later boots work without CD-ROM or registry
+          if [ "$SRC" != "/var/lib/corewaf/artifacts" ]; then
+            rm -rf /var/lib/corewaf/artifacts.tmp
+            mkdir -p /var/lib/corewaf/artifacts.tmp
+            cp -a "$SRC"/. /var/lib/corewaf/artifacts.tmp/ 2>/dev/null || true
+            rm -rf /var/lib/corewaf/artifacts
+            mv /var/lib/corewaf/artifacts.tmp /var/lib/corewaf/artifacts
           fi
 
   links:
@@ -349,7 +371,7 @@ systemd:
         [Service]
         Type=oneshot
         RemainAfterExit=yes
-        ExecStart=/opt/bin/provision-volumes.sh
+        ExecStart=/etc/corewaf/bin/provision-volumes.sh
         StandardOutput=journal
         StandardError=journal
         TimeoutSec=600
@@ -436,7 +458,7 @@ systemd:
         [Service]
         Type=oneshot
         RemainAfterExit=true
-        ExecStart=/opt/bin/install-bootstrap.sh
+        ExecStart=/etc/corewaf/bin/install-bootstrap.sh
 
         [Install]
         WantedBy=multi-user.target
@@ -457,7 +479,7 @@ systemd:
         Type=oneshot
         RemainAfterExit=yes
         TimeoutStartSec=0
-        ExecStart=/opt/bin/compose-up.sh
+        ExecStart=/etc/corewaf/bin/compose-up.sh
         ExecStop=/bin/bash -c 'for d in /var/lib/docker/compose/*/; do cd "$$d" && docker compose down 2>/dev/null; done'
 
         [Install]
