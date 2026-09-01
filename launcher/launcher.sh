@@ -16,7 +16,7 @@ REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git
 # tag, anything else -> main. COREWAF_RIG_REF always overrides. LAUNCHER_IMAGE is set
 # on the inner re-exec; the outer run self-inspects below before it matters.
 channel_ref() {
-    local tag="${LAUNCHER_IMAGE##*:}"
+    local tag="${LAUNCHER_IMAGE:-}"; tag="${tag##*:}"
     case "$tag" in stable) echo stable ;; v[0-9]*) echo "$tag" ;; *) echo main ;; esac
 }
 REF="${COREWAF_RIG_REF:-$(channel_ref)}"
