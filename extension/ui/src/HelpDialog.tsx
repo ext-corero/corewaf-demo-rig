@@ -48,7 +48,9 @@ export default function HelpDialog({ open, onClose, onOpenReadme }: {
             <li><b>Manual demo</b> — boots + stages the kit and mints a token but does <i>not</i>{' '}
               enrol. You then open the embedded terminal and run the enrolment inside the VM — the
               exact customer experience (public starter-kit bootstrap + <C>corewaf-demo-up</C>). The
-              dialog shows every command with copy buttons.</li>
+              dialog shows every command with copy buttons; the terminal is Docker Desktop's own
+              Exec tab on the kit container (click any node chip to jump there; type{' '}
+              <C>vm-ssh</C> for a shell inside that VM, <C>console</C> for serial).</li>
           </ul>
         </S>
 

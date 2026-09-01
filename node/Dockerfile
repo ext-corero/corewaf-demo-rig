@@ -20,6 +20,9 @@ RUN set -e; t=$(mktemp -d); \
     chmod +x /usr/local/bin/docker-credential-ecr-login /usr/local/bin/oras; rm -rf "$t"; \
     oras version >/dev/null && docker-credential-ecr-login -v >/dev/null
 COPY bin/ /usr/local/bin/
+# Greeting for interactive shells (Docker Desktop Exec tab): busybox ash reads $ENV.
+COPY shrc /etc/rig-shrc
+ENV ENV=/etc/rig-shrc
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh /usr/local/bin/*
 WORKDIR /rig

@@ -34,9 +34,9 @@ export default function DemoKitPanel({ kit, token, onOpenTerminal, onDismiss }: 
         <CopyRow label="step 2 (in VM)" value="corewaf-demo-up" />
       </Stack>
       <Stack direction="row" spacing={1} sx={{ mt: 1.5 }} alignItems="center">
-        <Button size="small" variant="contained" onClick={onOpenTerminal}>Open terminal in kit-{kit}</Button>
+        <Button size="small" variant="contained" onClick={onOpenTerminal}>Open kit-{kit} in Docker Desktop</Button>
         <Typography variant="caption" color="text.secondary">
-          then paste step 1, wait for it to finish, paste step 2 — the instance appears in the GUI under WAF instances → Pending.
+          in the container view open the Exec tab (that's a full terminal), type vm-ssh, then paste step 1, wait, paste step 2 — the instance appears in the GUI under WAF instances → Pending.
         </Typography>
       </Stack>
     </Alert>

@@ -27,8 +27,5 @@
         ]
       }
     ]
-  },
-  "vm": {
-    "composefile": "compose.yaml"
   }
 }

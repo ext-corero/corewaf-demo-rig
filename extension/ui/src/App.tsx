@@ -13,8 +13,6 @@ import {
 import HelpDialog from './HelpDialog';
 import AddKitDialog, { type KitMode } from './AddKitDialog';
 import DemoKitPanel from './DemoKitPanel';
-import TerminalDrawer from './TerminalDrawer';
-import type { PtyCmd } from './pty';
 
 const ddClient = createDockerDesktopClient();
 
@@ -24,7 +22,7 @@ const DEFAULT_PROFILE = 'corewaf-ecr';
 const NODES = ['app-1', 'dns-1', 'dns-2', 'gw-1', 'gw-2', 'obs-1'];
 const KITS = ['demo', 'a', 'b'];
 
-type Row = { name: string; state: string; health: string; image: string; ports: string[] };
+type Row = { id: string; name: string; state: string; health: string; image: string; ports: string[] };
 
 function load(key: string, fallback: string): string {
   try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
@@ -44,7 +42,6 @@ export default function App() {
   const [addKitOpen, setAddKitOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [demoKit, setDemoKit] = useState<{ kit: string; token: string } | null>(null);
-  const [term, setTerm] = useState<{ kit: string; cmd: PtyCmd } | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -60,6 +57,7 @@ export default function App() {
       setRows(
         list
           .map((c) => ({
+            id: String(c.Id ?? ''),
             name: String(c.Names?.[0] ?? '').replace(/^\//, ''),
             state: String(c.State ?? ''),
             health: (String(c.Status ?? '').match(/\((healthy|unhealthy|health: starting)\)/)?.[1] ?? '').replace('health: ', ''),
@@ -124,6 +122,12 @@ export default function App() {
   };
 
   const open = (url: string) => ddClient.host.openExternal(url);
+  // Jump to the node container in Docker Desktop — its Exec tab is a full
+  // interactive terminal; the container shell greets with vm-ssh/console hints.
+  const openContainer = (name: string) => {
+    const r = rows.find((x) => x.name === name);
+    if (r?.id) void ddClient.desktopUI.navigate.viewContainer(r.id);
+  };
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100vh', boxSizing: 'border-box' }}>
@@ -182,7 +186,7 @@ export default function App() {
 
       {demoKit && (
         <DemoKitPanel kit={demoKit.kit} token={demoKit.token}
-          onOpenTerminal={() => setTerm({ kit: demoKit.kit, cmd: 'vm-ssh' })}
+          onOpenTerminal={() => openContainer(`rig-kit-${demoKit.kit}`)}
           onDismiss={() => setDemoKit(null)} />
       )}
 
@@ -193,8 +197,9 @@ export default function App() {
         <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
         {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
         {rows.map((r) => (
-          <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''}`}>
-            <Chip label={r.name.replace(/^rig-/, '')} color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small" />
+          <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: container view (Exec tab = terminal; then vm-ssh)`}>
+            <Chip label={r.name.replace(/^rig-/, '')} color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
+              onClick={() => openContainer(r.name)} />
           </Tooltip>
         ))}
       </Stack>
@@ -237,7 +242,6 @@ export default function App() {
           setDemoKit(null);
           run(mode === 'auto' ? 'kit' : 'stage', slot);
         }} />
-      <TerminalDrawer target={term} onClose={() => setTerm(null)} />
     </Box>
   );
 }

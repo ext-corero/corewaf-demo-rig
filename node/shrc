@@ -1,0 +1,8 @@
+# Interactive-shell greeting for the node (hypervisor) container — shown in
+# Docker Desktop's Exec tab and any `docker exec -it ... sh`.
+if [ -t 0 ] && [ -z "${RIG_BANNER_SHOWN:-}" ]; then
+  export RIG_BANNER_SHOWN=1
+  echo "── CoreWAF rig: hypervisor container for ${NODE_NAME:-this node} ──"
+  echo "   vm-ssh    shell inside the VM        console   serial console (alpine/alpine, Ctrl-] detaches)"
+  echo "   vm-health health probe               this shell is the CONTAINER, not the VM"
+fi
