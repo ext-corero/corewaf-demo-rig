@@ -52,8 +52,10 @@ services:
     # CPU quota so coredns' maxprocs doesn't leave GOMAXPROCS unbounded noise;
     # harmless. Publish :53 on the VM's routed IP so peer VMs resolve through us.
     ports:
-      - "53:53/udp"
-      - "53:53/tcp"
+      # bind the service IP, not 0.0.0.0 — on Flatcar guests systemd-resolved's
+      # stub owns 127.0.0.53:53 and a wildcard bind collides with it
+      - "${NODE_IP}:53:53/udp"
+      - "${NODE_IP}:53:53/tcp"
     command: ["-conf", "/etc/coredns/Corefile"]
     volumes:
       - /opt/v2/config/Corefile:/etc/coredns/Corefile:ro
