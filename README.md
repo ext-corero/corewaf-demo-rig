@@ -27,13 +27,27 @@ All three run the *same rig* with the same scripts underneath — they are
 interchangeable on one host, and every instruction below uses the **stable** release
 channel (see [Channels](#channels--versions)).
 
-**Common prerequisite — registry access**: ask your Corero WAAP administrator to
-create an ECR pull user for you (they run `registry.sh add-user <you>` and send you
-an AWS access key). You configure it once on the machine that will run the rig:
+<a name="registry-credential"></a>
+**Common prerequisite — registry credential** (needed once per machine, by every
+model; the per-model steps below refer back here):
 
-```bash
-aws configure --profile corewaf-ecr     # paste the key id + secret; region us-east-1
-```
+1. **Install the AWS CLI** — <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
+   (Windows: the MSI from the same page; Linux: the zip or your package manager).
+2. **Ask your Corero WAAP administrator for an ECR pull user** (they run
+   `registry.sh add-user <you>` and send you an access key id + secret).
+3. **Configure the profile** with the values from your administrator — example with
+   mock data:
+
+   ```console
+   $ aws configure --profile corewaf-ecr
+   AWS Access Key ID [None]:     AKIAIOSFODNN7EXAMPLE
+   AWS Secret Access Key [None]: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+   Default region name [None]:   us-east-1
+   Default output format [None]: json
+   ```
+
+   The profile name (`corewaf-ecr` here) is yours to choose — just use the same
+   name later in the extension's field / the `AWS_PROFILE=` variable.
 
 Hardware for any model: 8+ CPU threads, 24 GB RAM available to the rig, ~40 GB disk,
 and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
@@ -58,8 +72,9 @@ and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
    ```powershell
    docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:stable
    ```
-5. **Registry credential**: `aws configure --profile corewaf-ecr` in PowerShell with
-   the key from your administrator (step "Common prerequisite" above).
+5. **Registry credential**: complete the [common prerequisite](#registry-credential)
+   above (AWS CLI + `aws configure --profile …` in PowerShell) — it is the **same
+   credential step**, not an additional one; skip if already done on this machine.
 6. **Configure the extension**: open *Extensions → CoreWAF Demo Rig*; set the
    **AWS profile** field to the profile name you created; adjust the GUI/Grafana
    ports only if the defaults (28080/23000) collide on your machine.
@@ -74,8 +89,8 @@ and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
 
 1. **Prerequisites**: Docker Engine 24+ with compose v2, and `/dev/kvm` usable
    (`docker run --rm --device /dev/kvm alpine test -w /dev/kvm && echo OK`).
-2. **Registry credential**: `aws configure --profile corewaf-ecr` (key from your
-   administrator).
+2. **Registry credential**: the [common prerequisite](#registry-credential) above
+   (AWS CLI installed + profile configured); skip if already done on this machine.
 3. **Bring it up** (stable channel):
    ```bash
    AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/stable/bootstrap.sh)
@@ -114,7 +129,8 @@ local QEMU machine — and keep your laptop untouched.
    Size it per the hardware line above (8 vCPU / 24 GB / 40 GB).
 2. **Inside the VM**: install Ubuntu 22.04/24.04 (or similar), Docker Engine, and
    verify `/dev/kvm` exists in the guest.
-3. **Continue exactly as Model 2** (credential → curl bootstrap → kit).
+3. **Continue exactly as Model 2** inside the VM — including the
+   [common prerequisite](#registry-credential) (AWS CLI + profile) there.
 4. **Reaching the GUI from outside the VM**: forward or open the two host ports the
    bootstrap printed (defaults 28080 GUI, 23000 Grafana), then browse
    `http://gui-1.localhost:28080` through an SSH tunnel
