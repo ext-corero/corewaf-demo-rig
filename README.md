@@ -1,209 +1,169 @@
-# CoreWAF demo rig
+# Corero WAAP — Demo Rig
 
-A self-contained, multi-VM CoreWAF environment for demos and testing: six
-VMs (each hosted by a Docker container running QEMU/KVM) (`app-1`, `dns-1/2`, `gw-1/2`, `obs-1`) on a routed lab network, each running
-its own docker stack, plus kit VMs enrolled over the gateway TLS edge + WireGuard.
+A self-contained, locally runnable demonstration environment for **Corero WAAP**
+(Web Application & API Protection), built for **sales engineers**: spin up the full
+product on your own laptop, demo it to customers, and use it to build your own
+understanding of how the pieces fit — control plane, DNS layer, tunnel gateways,
+observability, and enrollable WAAP kits (the customer edge).
 
-This repository is **public and deliberately thin**: it only knows how to stand
-the environment up. Every container image and the VM base image are pulled from
-the CoreWAF registry (AWS ECR), so **nothing here runs without a CoreWAF registry
-credential** — an IAM access key for a user in the `corewaf-ecr-pull` group,
-issued by the CoreWAF operators.
+Everything runs as containers that each host a real virtual machine (QEMU/KVM), so
+what you demonstrate behaves like the shipped product — same images, same enrolment
+flow, same GUI — while needing nothing but Docker and one credential.
 
+> Naming note: the product is **Corero WAAP**; you will see the internal codename
+> `corewaf` in repository, image and container names.
+
+---
+
+## The three deployment models
+
+| # | Model | Host | Best for |
+|---|-------|------|----------|
+| 1 | **Docker Desktop extension** | Windows 10/11 (or macOS) with Docker Desktop | SEs on a corporate laptop — buttons, no terminal required |
+| 2 | **Docker on Linux** | Any Linux with Docker Engine + KVM | Linux laptops/workstations, headless demo boxes |
+| 3 | **Inside a virtual machine** | A QEMU/KVM, vSphere or cloud VM running Linux | Shared demo servers, cloud sandboxes, keeping the laptop clean |
+
+All three run the *same rig* with the same scripts underneath — they are
+interchangeable on one host, and every instruction below uses the **stable** release
+channel (see [Channels](#channels--versions)).
+
+**Common prerequisite — registry access**: ask your Corero WAAP administrator to
+create an ECR pull user for you (they run `registry.sh add-user <you>` and send you
+an AWS access key). You configure it once on the machine that will run the rig:
+
+```bash
+aws configure --profile corewaf-ecr     # paste the key id + secret; region us-east-1
 ```
- app-1   .10   etcd · redis · waf-api · waf-gui · caddy :8080 · step-ca :9000
- dns-1/2 .21/.22  redis · coredns :53 · dns-bridge · vmsecd (secrets)
- gw-1/2  .31/.32  tunnel-gateway (WG :51820) · caddy edge :443 (ACME from step-ca)
- obs-1   .40   loki :3100 · mimir :9009 · alertmanager :9093 · grafana :3000
- rig-<kit>     starter-kit VM: netns · tunnel · caddy
-```
 
-## Requirements
+Hardware for any model: 8+ CPU threads, 24 GB RAM available to the rig, ~40 GB disk,
+and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
 
-The rig boots **six virtual machines** (plus one per kit) under QEMU/KVM, each inside a
-Docker container, and each VM runs its own Docker stack. Sizing defaults: app/obs 4 GB,
-dns/gw 2 GB, kits 1 GB → **~16 GB of guest RAM**, 12 vCPUs; the VM base image (≈800 MB)
-and the container images (≈2 GB) are downloaded once.
+---
 
-| | Minimum | Notes |
-|---|---|---|
-| CPU | x86-64 with VT-x/AMD-V, 8+ cores | nested virtualization on Windows (below) |
-| RAM | 24 GB host (32 GB comfortable) | guests use ~16 GB; override `RIG_*_RAM_MB` in `.env` |
-| Disk | 40 GB free | base image + VM overlays + container images |
-| Docker | Engine 24+ / Docker Desktop 4.30+, Compose v2.20+ | `docker compose version` |
-| KVM | `/dev/kvm` usable **from a container** | the bootstrap probes it: `docker run --rm --device /dev/kvm alpine test -w /dev/kvm` |
-| Credential | an AWS access key for the CoreWAF registry | IAM user in group `corewaf-ecr-pull`, issued by the CoreWAF operators |
-| Network | outbound HTTPS to `*.amazonaws.com`, `github.com`, Docker Hub, `dl-cdn.alpinelinux.org` | VMs egress through Docker's NAT |
-| Tools on the host | `git`, `curl`, `docker` | nothing else — no sudo, no packages, `task` optional |
+## Model 1 — Windows with the Docker Desktop extension
 
-Host ports published by default: **8080** (GUI/API), **3000** (Grafana), **9000** (step-ca).
-The bootstrap picks the next free port when one is taken and records it in `.env`
-(`RIG_HTTP_PORT`, `RIG_GRAFANA_PORT`, `RIG_STEPCA_PORT`); `scripts/hosts-block.sh` prints
-the matching hosts-file lines.
-
-### Linux (Docker Engine)
-
-- Your user in the `docker` group; `/dev/kvm` present (`ls -l /dev/kvm`; load `kvm_intel`/`kvm_amd` if missing).
-- The rig creates the Docker network `corewaf-rig` = `192.168.150.0/24`; it must not overlap
-  an existing network/route on the host (a leftover libvirt bridge on that subnet must be removed first).
-- The Docker bridge is local, so `192.168.150.x` is reachable directly — `scripts/hosts-block.sh`
-  prints `/etc/hosts` lines with the real VM IPs.
-
-### Windows (Docker Desktop, WSL2 backend)
-
-Validated on Windows 11 + Docker Desktop with the WSL2 backend (Ubuntu distro).
-
-1. **Nested virtualization** — `%UserProfile%\.wslconfig`:
+1. **Install Docker Desktop** (WSL2 backend): <https://docs.docker.com/desktop/setup/install/windows-install/>
+2. **Enable nested virtualization** — edit `%UserProfile%\.wslconfig`:
    ```ini
    [wsl2]
    nestedVirtualization=true
-   memory=24GB          # cap for ALL of WSL2 incl. Docker; ≥ 24 GB recommended
+   memory=24GB
    processors=8
    ```
-   then `wsl --shutdown` and start Docker Desktop again. Check from a WSL shell:
-   `ls -l /dev/kvm` and `docker run --rm --device /dev/kvm alpine test -w /dev/kvm && echo OK`.
-2. **Docker Desktop settings** — *General → Use the WSL 2 based engine*; *Resources → WSL
-   integration* enabled for the distro you will use; *Resources → File sharing* includes
-   the directory you clone into (default paths under your profile are shared). Keep the
-   checkout on the WSL filesystem (e.g. `~/rig`), not under `/mnt/c`, for speed.
-3. **Run from a WSL shell** (Ubuntu): the bootstrap and `kit.sh` are bash scripts:
-   ```bash
-   aws configure --profile corewaf-ecr            # or export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
-   AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
+   then run `wsl --shutdown` in PowerShell and start Docker Desktop again.
+3. **Allow non-Marketplace extensions**: Docker Desktop → *Settings → Extensions* →
+   untick *"Allow only extensions distributed through the Docker Marketplace"* →
+   Apply & restart. (<https://docs.docker.com/extensions/settings-feedback/>)
+4. **Install the extension** (PowerShell):
+   ```powershell
+   docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:stable
    ```
-4. **Reaching the rig from Windows** — container IPs are not routable from Windows; use the
-   published ports. `C:\Windows\System32\drivers\etc\hosts`:
-   `127.0.0.1 gui-1.rig.internal app-1.rig.internal grafana.rig.internal` → GUI at
-   `http://gui-1.rig.internal:<RIG_HTTP_PORT>`, Grafana at `http://grafana.rig.internal:<RIG_GRAFANA_PORT>`.
-   Everything that must reach the VMs runs inside the rig network (`task verify`, `task ssh`,
-   `kit.sh`), so no route is needed.
-5. Non-interactive shells (ssh into WSL, CI): Docker Desktop's credential helper
-   (`docker-credential-desktop.exe`) is not on PATH, so pulls fail with
-   `error getting credentials`. Use a plain config for the rig: `export DOCKER_CONFIG=$HOME/.docker-rig; echo '{}' > $DOCKER_CONFIG/config.json`
-   (the bootstrap's ECR login then lands there). Interactive Docker Desktop shells are unaffected.
+5. **Registry credential**: `aws configure --profile corewaf-ecr` in PowerShell with
+   the key from your administrator (step "Common prerequisite" above).
+6. **Configure the extension**: open *Extensions → CoreWAF Demo Rig*; set the
+   **AWS profile** field to the profile name you created; adjust the GUI/Grafana
+   ports only if the defaults (28080/23000) collide on your machine.
+7. **Run**: press **Up** and wait (first boot ≈ 10 minutes — the VMs pull their
+   images). Chips turn green as nodes come up; then **Open GUI**.
+8. **Demo**: **+ Add kit** → *Automated* enrols a WAAP kit end-to-end; *Manual demo*
+   stages a kit and hands you the token + the exact in-VM commands a customer would
+   run (terminal = click any node chip → Docker Desktop's Exec tab). The **?** button
+   holds the full in-app guide; **Refresh kits** revives kits that show stale.
 
-See [docs/windows.md](docs/windows.md) for the longer version.
+## Model 2 — Docker on Linux
 
-### What the bootstrap does
+1. **Prerequisites**: Docker Engine 24+ with compose v2, and `/dev/kvm` usable
+   (`docker run --rm --device /dev/kvm alpine test -w /dev/kvm && echo OK`).
+2. **Registry credential**: `aws configure --profile corewaf-ecr` (key from your
+   administrator).
+3. **Bring it up** (stable channel):
+   ```bash
+   AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/stable/bootstrap.sh)
+   ```
+   The bootstrap checks KVM, logs into the registry, clones the rig, picks free
+   host ports (recorded in `.env`) and boots the six VMs.
+4. **Open it**: the bootstrap prints the URLs — GUI `http://gui-1.localhost:28080`,
+   Grafana `http://grafana.localhost:23000` (`*.localhost` needs no hosts file).
+   *Optional*: `scripts/hosts-block.sh` prints an `/etc/hosts` block if you also want
+   the internal `*.rig.internal` names resolvable from your browser.
+5. **Enrol a kit**:
+   ```bash
+   bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/stable/kit.sh) a   # kits: demo | a | b
+   ```
+6. **Day-2** (from the checkout): `task verify | ps | stat | stop | up`, and
+   `task demo:*` for the manual, in-VM demo runbook (`docs/demo-kit.md`).
 
-`bootstrap.sh` checks Docker/Compose, probes KVM inside a container, logs Docker into the
-CoreWAF registry with your AWS credential (via a throw-away `aws-cli` container — no aws CLI
-needed on the host), clones this repo, picks free host ports, and runs `docker compose up -d`:
-`rig-init` pulls the VM base image and generates the rig CA/secrets/ssh key into volumes,
-then the six node containers boot their VMs and each VM starts its stack. First run ≈ 7–11 min
-depending on bandwidth; later starts ≈ 1–2 min. It is safe to re-run.
+The launcher container is the same thing without a checkout — handy on any machine
+with Docker (Windows PowerShell included):
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ~/.aws:/root/.aws:ro \
+  -e AWS_PROFILE=corewaf-ecr 123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:stable up
+```
+Verbs: `up status verify ps stat logs exec kit stage refresh-kits stop down reset url`.
 
-## Channels
+## Model 3 — Inside a virtual machine
 
-Two channels, same machinery:
+Run the whole rig inside one Linux VM — a shared demo server, a cloud sandbox, or a
+local QEMU machine — and keep your laptop untouched.
 
-| | **stable** (recommended for users) | **development** |
+1. **Create the VM** with nested virtualization exposed:
+   - QEMU/KVM: `-cpu host` (host must have `kvm_intel nested=1` / `kvm_amd nested=1`);
+   - vSphere: VM → CPU → *Expose hardware assisted virtualization to the guest OS*;
+   - cloud: pick an instance family that supports nested virt (e.g. bare-metal or
+     Azure Dv3+/GCP with nested enabled).
+   Size it per the hardware line above (8 vCPU / 24 GB / 40 GB).
+2. **Inside the VM**: install Ubuntu 22.04/24.04 (or similar), Docker Engine, and
+   verify `/dev/kvm` exists in the guest.
+3. **Continue exactly as Model 2** (credential → curl bootstrap → kit).
+4. **Reaching the GUI from outside the VM**: forward or open the two host ports the
+   bootstrap printed (defaults 28080 GUI, 23000 Grafana), then browse
+   `http://gui-1.localhost:28080` through an SSH tunnel
+   (`ssh -L 28080:localhost:28080 …`) or use the VM's address with a hosts entry
+   from `scripts/hosts-block.sh`.
+
+---
+
+## Channels & versions
+
+| | **stable** (use this) | development |
 |---|---|---|
-| rig code | git branch `stable` (moves only at releases; tags `vX.Y.Z` freeze forever) | `main` |
-| curl | `bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/stable/bootstrap.sh)` | same URL with `/main/` |
-| launcher | `…/rig/launcher:stable` (or `:vX.Y.Z`) | `…/rig/launcher:latest` |
-| extension | `ghcr.io/ext-corero/corewaf-demo-rig/extension:stable` | `…/extension:latest` |
+| rig code | branch `stable`, tags `vX.Y.Z` | `main` |
+| curl | `…/stable/bootstrap.sh` (as above) | same URL with `/main/` |
+| launcher | `…/rig/launcher:stable` | `:latest` |
+| extension | `…/extension:stable` | `:latest` |
 
-The launcher derives the rig branch from its own image tag (`:stable` → `stable`,
-`:vX.Y.Z` → that tag, else `main`); `COREWAF_RIG_REF` overrides. Every rig image is
-pinned by `images.env` at the released commit, including the starter-kit ref
-(`KIT_REF_PIN`), so a version is a complete, reproducible runtime. Releases are cut
-with `scripts/release.sh vX.Y.0` (from main) or `scripts/release.sh --patch vX.Y.Z`
-(hotfix on the stable branch, e.g. a single `images.env` pin bump).
+`stable` only moves when a release is cut; every release is a fully pinned runtime
+(all images, the VM base, the starter-kit ref). Releases: `scripts/release.sh vX.Y.0`
+(from main) or `--patch vX.Y.Z` (hotfix on stable — e.g. a single image pin bump).
 
-## Quick start
+## What's in the rig
 
-Three equivalent entry points — pick one:
-
-**A. curl bootstrap** (Linux console or a WSL shell):
-```bash
-aws configure --profile corewaf-ecr        # the key your CoreWAF operator issued (IAM group corewaf-ecr-pull)
-AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
-```
-
-**B. launcher container** — nothing on the host but Docker (works from PowerShell on Docker Desktop too):
-```bash
-# host docker login (ECR tokens last 12 h — needed only to pull the launcher image itself):
-docker run --rm -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=corewaf-ecr public.ecr.aws/aws-cli/aws-cli ecr get-login-password --region us-east-1 \
-  | docker login --username AWS --password-stdin 123517950721.dkr.ecr.us-east-1.amazonaws.com
-docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock -v ~/.aws:/root/.aws:ro -e AWS_PROFILE=corewaf-ecr \
-  123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:latest up
-```
-The launcher keeps the rig checkout in a Docker volume (`corewaf-demo-rig_repo`) and drives the same
-compose project as the curl path, so the two are interchangeable. Other verbs: `status`, `verify`,
-`kit demo|a|b`, `stop`, `down`, `reset`, `logs <node>`, `url`. On Windows/PowerShell use
-`-v //var/run/docker.sock:/var/run/docker.sock -v $env:USERPROFILE\.aws:/root/.aws:ro`, or pass
-`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY` instead of mounting `~/.aws`. Inside the rig the guests
-authenticate with the credential helper + your key (no expiry); only the host-side pull of the launcher
-image needs that 12 h login.
-
-**C. Docker Desktop extension** — buttons instead of a terminal (Windows / macOS / Linux Docker Desktop):
-```bash
-aws configure --profile corewaf-ecr        # once, on the host (the extension mounts ~/.aws for you)
-docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:latest
-```
-Docker Desktop only installs Marketplace extensions by default — the install above fails with
-*"only extensions distributed through the Docker Marketplace are allowed"* until you allow it once:
-**Docker Desktop → Settings → Extensions → untick "Allow only extensions distributed through the Docker
-Marketplace" → Apply & restart**. (Two-line PowerShell/terminal alternative to clicking the checkbox isn't
-available; the setting is per machine.) On Windows, run the install from PowerShell, not from a WSL shell —
-the extension manager socket is only visible to the Windows CLI.
-Then open **Extensions → CoreWAF Demo Rig**: *Up*, *Verify*, *Enrol kit*, *Stop/Down/Reset*, node health chips,
-live output, and *Open GUI / Grafana* links. The extension is a thin front end over the launcher (B): its bundled
-host helper runs the very same `docker run … rig/launcher <verb>` with `~/.aws` and the docker socket attached
-(including the 12 h ECR re-login on *Up*), against the same compose project — so A, B and C are interchangeable
-on one host. The image itself is public (no login to install); the rig images still need your pull profile.
-Source: `extension/` (React/MUI UI, Go host helper, no backend service).
-
-```bash
-cd corewaf-demo-rig
-task verify          # health checklist (runs inside the rig network — Windows-friendly)
-bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) a   # enrol a WAF kit, fully automatic (kits: demo|a|b)
-task demo:reset      # stage the demo kit VM + mint a token for the manual, in-VM enrol — see docs/demo-kit.md
-task stop / task up  # graceful VM shutdown / boot;   task reset wipes everything
-```
-
-- GUI: **<http://gui-1.localhost:28080>** (any OS, no hosts file — host ports default to 28080/23000/29000, deliberately uncommon; `RIG_HTTP_PORT`/`RIG_GRAFANA_PORT`/`RIG_STEPCA_PORT` in `.env` — or the extension's port fields — override them) ·
-  Grafana: `http://grafana.localhost:<RIG_GRAFANA_PORT>` · `scripts/hosts-block.sh` prints the optional `rig.internal` hosts lines.
-- Developer path: `RIG_MODE=source` builds the images from a sibling `corewaf-workspace` (see `compose/build/`).
+`app-1` control plane (GUI + APIs + CA) · `dns-1/2` DNS bridges · `gw-1/2` tunnel
+gateways (WireGuard) · `obs-1` observability (Grafana/Loki/Mimir) · up to three
+**kits** — customer-edge WAAP VMs with TPM-backed identity you enrol live.
+Each is a VM inside a container; `rig ps` / `rig stat` (or the extension) show what
+runs inside every VM, and any VM's hypervisor shell greets you with a status motd.
 
 ## Troubleshooting
 
-### Looking inside the VMs
-
-Everything nests: node containers run QEMU guests, the guests run the actual CoreWAF
-containers. Four verbs make that transparent (same verbs from every entry point):
-
-| what | task | launcher / extension |
-|---|---|---|
-| containers in every guest | `task ps` | `ps` / **Containers** button |
-| guest uptime/load/mem/disk | `task stat` | `stat` / **Stat** button |
-| logs of an in-guest container | `task logs NODE=gw-1 C=rig2-tunnel-gateway` | `logs gw-1 rig2-tunnel-gateway` |
-| run a command in an in-guest container | `docker compose --profile tools run --rm cli rig exec dns-1 rig2-coredns ls /etc/coredns` | `exec …` |
-
-Plus: `rig ssh <node>` for a shell in a guest, `rig-launcher console <node>` (or
-`docker logs rig-<node>`) for the VM serial console.
-
-
-| Symptom | Cause / fix |
+| symptom | fix |
 |---|---|
-| bootstrap: `/dev/kvm is not available to containers` | Linux: enable VT-x/AMD-V, `modprobe kvm_intel`; Windows: `.wslconfig nestedVirtualization=true` + `wsl --shutdown` |
-| node container exits with `KVM is required` | same as above (the node refuses to run under emulation) |
-| `Bind ... failed: port is already allocated` | set `RIG_GRAFANA_PORT` (or `RIG_HTTP_PORT`/`RIG_STEPCA_PORT`) in `.env`; the bootstrap does this automatically |
-| `error getting credentials … docker-credential-desktop.exe` | non-interactive WSL shell → `DOCKER_CONFIG` workaround above |
-| `rig-init` fails: cannot mint a registry token | AWS credential missing/not in `corewaf-ecr-pull`; `AWS_PROFILE` needs `~/.aws` (mounted into rig-init) |
-| network `corewaf-rig`: pool overlaps / has active endpoints | another network on 192.168.150.0/24 (old libvirt bridge), or a stale kit endpoint: `docker network disconnect -f corewaf-rig rig-kit-a` |
-| VMs boot but stacks stay unhealthy for minutes | first boot pulls ~2 GB of images inside the guests; `task logs NODE=app-1` shows the VM console |
-| `task verify`: "guest egress" red | Docker NAT blocked by a host firewall (WSL: check Windows firewall / VPN clients) |
+| `KVM not available to containers` | firmware VT-x/AMD-V; Windows: `.wslconfig` `nestedVirtualization=true` + `wsl --shutdown` |
+| extension install: *"only extensions distributed through the Docker Marketplace"* | Model 1 step 3 |
+| registry errors / pull denied | profile name in the extension/env must match `aws configure --profile …`; ask your admin to confirm the ECR user |
+| `Bind … failed: port is already allocated` | change the port fields (extension) or `RIG_HTTP_PORT`/`RIG_GRAFANA_PORT` in `.env` |
+| kits show **stale** heartbeats in the GUI | press **Refresh kits** (extension) or `… launcher:stable refresh-kits` — enrolments persist |
+| kit enrol prints "failed" but the kit looks fine a minute later | slow first boot lost a health-wait race — check the GUI before re-running |
+| one node chip red/orange for long | `docker restart rig-<node>`; the boot hook restarts its stack |
+| first extension press after an update shows old output | the launcher refreshes in the background — press again |
 
-## Layout
+## Repository layout
 
-`docker-compose.yml` — the rig (one node container per VM, `kit` and `tools` profiles) ·
-`node/` — the rig-node image (QEMU/KVM hypervisor, `rig-init`, `rig` CLI, kit staging) ·
-`compose/` — per-role stacks that run *inside* the guests · `config/`, `seed/` — rig config ·
-`kit-shim/` — kit install shim · `packer/` — VM base image (built + published by CI) · `launcher/` — the `docker run` entry point ·
-`extension/` — Docker Desktop extension (UI over the launcher) ·
-`images.env` — every pinned image · `inventory.env` — names/IPs/MACs/sizing ·
-`docs/demo-kit.md` — demo runbook · `docs/windows.md` — Docker Desktop notes.
+`docker-compose.yml` node containers (one VM each) · `node/` hypervisor image +
+`rig` CLI · `compose/` in-VM stacks · `launcher/` the `docker run` entry point ·
+`extension/` Docker Desktop extension · `packer/` VM base image (CI-built) ·
+`images.env` every pin · `inventory.env` addresses/sizing · `scripts/release.sh`
+release/hotfix tooling · `docs/` runbooks (demo-kit, windows). Developer mode
+(`RIG_MODE=source`, building from a sibling workspace): `compose/build/`.
 
 License: Apache-2.0.
