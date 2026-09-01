@@ -13,6 +13,8 @@ import {
 import HelpDialog from './HelpDialog';
 import AddKitDialog, { type KitMode } from './AddKitDialog';
 import DemoKitPanel from './DemoKitPanel';
+import NodeDrawer from './NodeDrawer';
+import { renderAnsi } from './ansi';
 
 const ddClient = createDockerDesktopClient();
 
@@ -42,6 +44,7 @@ export default function App() {
   const [addKitOpen, setAddKitOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [demoKit, setDemoKit] = useState<{ kit: string; token: string } | null>(null);
+  const [drill, setDrill] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -122,6 +125,19 @@ export default function App() {
   };
 
   const open = (url: string) => ddClient.host.openExternal(url);
+  // Quiet runner for the drill-down tabs: captures output, no global busy/log.
+  const runCapture = (verb: string, ...args: string[]): Promise<string> =>
+    new Promise((resolve, reject) => {
+      let acc = '';
+      ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...args], {
+        stream: {
+          onOutput: (d) => { acc += (d.stdout ?? '') + (d.stderr ?? ''); },
+          onError: (e) => reject(e),
+          onClose: () => resolve(acc),
+          splitOutputLines: false,
+        },
+      });
+    });
   // Jump to the node container in Docker Desktop — its Exec tab is a full
   // interactive terminal; the container shell greets with vm-ssh/console hints.
   const openContainer = (name: string) => {
@@ -166,12 +182,6 @@ export default function App() {
         <Tooltip title="Add a WAF kit — automated enrolment, or staged for a manual in-VM demo"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>
         </span></Tooltip>
-        <Tooltip title="Containers running inside every guest VM"><span>
-          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('ps')}>Containers</Button>
-        </span></Tooltip>
-        <Tooltip title="Per-VM uptime, load, memory, disk"><span>
-          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('stat')}>Stat</Button>
-        </span></Tooltip>
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Graceful VM shutdown; disks kept"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy} onClick={() => run('stop')}>Stop</Button>
@@ -196,15 +206,15 @@ export default function App() {
       <Box>
         <Stack direction="row" spacing={1} alignItems="baseline">
           <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
-          <Typography variant="caption" color="text.secondary">— click a node to open its terminal (Exec tab, then <code>vm-ssh</code>)</Typography>
+          <Typography variant="caption" color="text.secondary">— click a node for its containers, stats and terminal</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
           {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
           {rows.map((r) => (
-            <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: container view (Exec tab = terminal; then vm-ssh)`}>
+            <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: containers · stat · terminal`}>
               <Chip label={`❯ ${r.name.replace(/^rig-/, '')}`} clickable color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
                 sx={{ '& .MuiChip-label': { fontFamily: 'inherit' }, cursor: 'pointer' }}
-                onClick={() => openContainer(r.name)} />
+                onClick={() => setDrill(r.name.replace(/^rig-/, ''))} />
             </Tooltip>
           ))}
         </Stack>
@@ -214,7 +224,7 @@ export default function App() {
         flex: 1, minHeight: 200, m: 0, p: 1.5, overflow: 'auto', fontSize: 12, lineHeight: 1.4,
         bgcolor: 'background.default', border: 1, borderColor: 'divider', borderRadius: 1, whiteSpace: 'pre-wrap',
       }}>
-        {log || 'Output of the last action appears here.'}
+        {log ? renderAnsi(log) : 'Output of the last action appears here.'}
       </Box>
 
       <Typography variant="caption" color="text.secondary">
@@ -248,6 +258,9 @@ export default function App() {
           setDemoKit(null);
           run(mode === 'auto' ? 'kit' : 'stage', slot);
         }} />
+      <NodeDrawer node={drill} runCapture={runCapture}
+        onOpenTerminal={(n) => openContainer(`rig-${n}`)}
+        onClose={() => setDrill(null)} />
     </Box>
   );
 }
