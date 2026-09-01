@@ -56,7 +56,8 @@ ensure_repo() {
     if [[ -d "$DIR/.git" ]]; then
         # full refspec: a bare `fetch origin <branch>` does not create the local ref,
         # so switching channels (main <-> stable) in an existing volume would fail.
-        git -C "$DIR" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' --tags 2>/dev/null || true
+        git -C "$DIR" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null || true
+        git -C "$DIR" fetch -qf origin '+refs/tags/*:refs/tags/*' 2>/dev/null || true   # channel tags may be re-pointed
         # track the remote exactly: channel branches (stable) may be force-moved
         # by a release, so ff-pulls are not enough; tags check out detached.
         if git -C "$DIR" rev-parse -q --verify "origin/$REF" >/dev/null 2>&1; then
