@@ -8,7 +8,7 @@
 name: corewaf-demo-rig
 
 x-node: &node
-  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-4d61531}
+  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
   build: ./node
   init: true
   restart: unless-stopped
@@ -36,7 +36,7 @@ x-node: &node
 
 services:
   rig-init:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-4d61531}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
     build: ./node
     command: rig-init
     restart: "no"
@@ -217,7 +217,7 @@ services:
     ports: ["${RIG_BACKSTAGE_PORT:-27007}:7007"]
 
   cli:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-4d61531}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
     build: ./node
     profiles: [tools]
     command: cli
