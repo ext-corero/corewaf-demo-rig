@@ -4,6 +4,8 @@
 // bundled host helper `corewaf-rig <profile> <image> <verb>`, which is the
 // README's `docker run … rig/launcher <verb>` with ~/.aws and the docker
 // socket attached. Status comes straight from the engine (rig-* containers).
+// Terminals are Docker Desktop's own: node chips deep-link to the container
+// view, whose Exec tab lands in the hypervisor shell (motd + prompt).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createDockerDesktopClient } from '@docker/extension-api-client';
 import {
@@ -13,7 +15,6 @@ import {
 import HelpDialog from './HelpDialog';
 import AddKitDialog, { type KitMode } from './AddKitDialog';
 import DemoKitPanel from './DemoKitPanel';
-import NodeDrawer from './NodeDrawer';
 import { renderAnsi } from './ansi';
 
 const ddClient = createDockerDesktopClient();
@@ -41,14 +42,13 @@ function healthColor(h: string): 'success' | 'warning' | 'error' | 'default' {
 export default function App() {
   const [profile, setProfile] = useState(() => load('rig.profile', DEFAULT_PROFILE));
   const [image, setImage] = useState(() => load('rig.image', DEFAULT_IMAGE));
-  const [addKitOpen, setAddKitOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [demoKit, setDemoKit] = useState<{ kit: string; token: string } | null>(null);
-  const [drill, setDrill] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
   const [confirm, setConfirm] = useState<null | 'down' | 'reset'>(null);
+  const [addKitOpen, setAddKitOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [demoKit, setDemoKit] = useState<{ kit: string; token: string } | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => save('rig.profile', profile), [profile]);
@@ -125,21 +125,8 @@ export default function App() {
   };
 
   const open = (url: string) => ddClient.host.openExternal(url);
-  // Quiet runner for the drill-down tabs: captures output, no global busy/log.
-  const runCapture = (verb: string, ...args: string[]): Promise<string> =>
-    new Promise((resolve, reject) => {
-      let acc = '';
-      ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...args], {
-        stream: {
-          onOutput: (d) => { acc += (d.stdout ?? '') + (d.stderr ?? ''); },
-          onError: (e) => reject(e),
-          onClose: () => resolve(acc),
-          splitOutputLines: false,
-        },
-      });
-    });
   // Jump to the node container in Docker Desktop — its Exec tab is a full
-  // interactive terminal; the container shell greets with vm-ssh/console hints.
+  // interactive terminal; the container shell prints a status motd, then a prompt.
   const openContainer = (name: string) => {
     const r = rows.find((x) => x.name === name);
     if (r?.id) void ddClient.desktopUI.navigate.viewContainer(r.id);
@@ -206,15 +193,15 @@ export default function App() {
       <Box>
         <Stack direction="row" spacing={1} alignItems="baseline">
           <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
-          <Typography variant="caption" color="text.secondary">— click a node for its containers, stats and terminal</Typography>
+          <Typography variant="caption" color="text.secondary">— click a node → its terminal (Exec tab): a status printout, then a prompt; <code>vm-ssh</code> enters the VM</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
           {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
           {rows.map((r) => (
-            <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: containers · stat · terminal`}>
+            <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: terminal (Exec tab)`}>
               <Chip label={`❯ ${r.name.replace(/^rig-/, '')}`} clickable color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
                 sx={{ '& .MuiChip-label': { fontFamily: 'inherit' }, cursor: 'pointer' }}
-                onClick={() => setDrill(r.name.replace(/^rig-/, ''))} />
+                onClick={() => openContainer(r.name)} />
             </Tooltip>
           ))}
         </Stack>
@@ -258,9 +245,6 @@ export default function App() {
           setDemoKit(null);
           run(mode === 'auto' ? 'kit' : 'stage', slot);
         }} />
-      <NodeDrawer node={drill} runCapture={runCapture}
-        onOpenTerminal={(n) => openContainer(`rig-${n}`)}
-        onClose={() => setDrill(null)} />
     </Box>
   );
 }

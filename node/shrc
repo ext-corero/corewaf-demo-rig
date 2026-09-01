@@ -1,8 +1,20 @@
-# Interactive-shell greeting for the node (hypervisor) container — shown in
-# Docker Desktop's Exec tab and any `docker exec -it ... sh`.
+# Interactive-shell motd for the node (hypervisor) container — shown in Docker
+# Desktop's Exec tab and any `docker exec -it ... sh`: identity, quick health
+# checks, the VM's containers, then the prompt. Bounded so a dead guest never
+# hangs the shell (every probe is timeout-guarded).
 if [ -t 0 ] && [ -z "${RIG_BANNER_SHOWN:-}" ]; then
   export RIG_BANNER_SHOWN=1
-  echo "── CoreWAF rig: hypervisor container for ${NODE_NAME:-this node} ──"
-  echo "   vm-ssh    shell inside the VM        console   serial console (alpine/alpine, Ctrl-] detaches)"
-  echo "   vm-health health probe               this shell is the CONTAINER, not the VM"
+  printf '\n\033[1m── CoreWAF rig · %s ──\033[0m  (this shell is the HYPERVISOR container, not the VM)\n' "${NODE_NAME:-node}"
+  printf '   guest %s  role %s\n' "${NODE_IP:-?}" "${ROLE:-?}"
+  if timeout 3 nc -z -w2 "${NODE_IP:-127.0.0.1}" 22 >/dev/null 2>&1; then
+    printf '   \033[32m✓\033[0m guest ssh reachable'
+    UP=$(timeout 6 vm-ssh 'uptime 2>/dev/null' 2>/dev/null | sed 's/^ *//;s/,  *load/ · load/;s/ [0-9]* users*,//')
+    [ -n "$UP" ] && printf '  ·  %s' "$UP"; printf '\n'
+    printf '   \033[1mcontainers in the VM:\033[0m\n'
+    timeout 8 vm-ssh 'docker ps --format "{{.Names}}\t{{.Status}}" 2>/dev/null || sudo docker ps --format "{{.Names}}\t{{.Status}}" 2>/dev/null' 2>/dev/null \
+      | awk -F'\t' '{printf "     %-28s %s\n", $1, $2}' || true
+  else
+    printf '   \033[31m✗\033[0m guest ssh NOT reachable (booting or stalled — try: vm-health; docker restart this container)\n'
+  fi
+  printf '   \033[2mvm-ssh = shell inside the VM · console = serial (alpine/alpine, Ctrl-] detaches) · vm-health = probe\033[0m\n\n'
 fi
