@@ -130,6 +130,9 @@ services:
       # Kits dial this endpoint (routable from outside via the static route).
       TUNNELGW_WG_ADVERTISED_ENDPOINT: "${FQDN}:51820"
       TUNNELGW_DNS_FORWARD_ZONE: internal
+      # Live logs: opt-in second source — tail the edge Caddy container
+      # (needs the docker socket mount below). Default deployments unset this.
+      TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
       TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
       TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
       TUNNELGW_INGRESS_BRIDGE_PORT: "443"
@@ -159,6 +162,7 @@ services:
       TUNNELGW_BRIDGE_REVERSE_URL_TEMPLATE: "https://{hw_id}.${NODE_NAME}.bridges.internal"
     volumes:
       - /opt/shared-secrets/tunnel-gw:/secrets/tunnel-gw:ro    # provisioner + root (virtiofs)
+      - /var/run/docker.sock:/var/run/docker.sock:ro           # live-logs: edge Caddy docker follow
       - gw-local-secrets:/var/run/tunnel-gateway/secrets
       - gw-runtime-state:/var/run/tunnel-gateway/state
       - gw-wg-state:/etc/wireguard
