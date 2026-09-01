@@ -8,6 +8,7 @@
 #   exec NODE CTR CMD...                         run a command in a container inside a guest
 #   kit NAME  boot + stage + mint + enrol a kit, fully automatic (demo|a|b)
 #   stage NAME  boot + stage + mint but do NOT enrol — manual in-VM demo (prints TOKEN=...)
+#   refresh-kits  recreate the kit node containers (fixes kits gone stale; enrolments persist)
 #   stop | down | reset                          console NODE (VM serial log)   url   browser URLs
 #   shell     bash in the launcher with the checkout mounted (debug)
 set -euo pipefail
@@ -131,11 +132,22 @@ case "$cmd" in
           echo "  terminal:  docker exec -it rig-$SVC vm-ssh          (or: docker exec -it rig-$SVC console — login alpine/alpine)"
           echo "  in the VM: NO_UP=1 TOKEN=<token> bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-starter-kit/main/bootstrap.sh)"
           echo "             corewaf-demo-up" ;;
+  refresh-kits) ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+          step "refresh kits — recreate kit node containers (fresh network endpoints; VM disks, identities and enrolments persist)"
+          KITS="$(docker ps -a --filter name=rig-kit- --format '{{.Names}}' | sed 's/^rig-//' | tr '\n' ' ')"
+          [[ -n "${KITS// /}" ]] || { warn "no kit containers to refresh"; exit 0; }
+          # shellcheck disable=SC2086
+          compose --profile kit up -d --force-recreate $KITS
+          for k in $KITS; do
+              for _ in $(seq 1 60); do [[ "$(docker inspect -f '{{.State.Health.Status}}' "rig-$k" 2>/dev/null)" == healthy ]] && break; sleep 5; done
+              ok "rig-$k $(docker inspect -f '{{.State.Health.Status}}' "rig-$k" 2>/dev/null)"
+          done
+          echo "kits rebooted — enrolled tunnels reconnect on their own within ~1 min (watch the GUI heartbeats)" ;;
   stop)   ensure_repo; compose --profile kit stop ;;
   down)   ensure_repo; compose --profile kit down ;;
   reset)  ensure_repo; compose --profile kit --profile tools down -v ;;
   console) ensure_repo; compose --profile kit logs -f --tail=100 "${1:-app-1}" ;;
   url)    ensure_repo; urls ;;
   shell)  ensure_repo; exec bash ;;
-  *) sed -n '2,13p' "$0" ;;
+  *) sed -n '2,14p' "$0" ;;
 esac
