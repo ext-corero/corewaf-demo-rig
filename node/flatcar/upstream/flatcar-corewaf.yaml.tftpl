@@ -255,7 +255,7 @@ storage:
 
           # Source 2: OCI registry via docker (registry-backed deployments)
           if [ -z "$SRC" ]; then
-            REF="$(sed -n 's/^bootstrap_artifacts=//p' /etc/bootstrap 2>/dev/null | head -1)"
+            REF="$${BOOTSTRAP_ARTIFACTS_REF:-$(sed -n 's/^bootstrap_artifacts=//p' /etc/bootstrap 2>/dev/null | head -1)}"
             if [ -z "$REF" ]; then echo "No bootstrap source (no CD-ROM, no bootstrap_artifacts=)"; exit 0; fi
             echo "Fetching bootstrap artifacts: $REF"
             docker pull "$REF"
