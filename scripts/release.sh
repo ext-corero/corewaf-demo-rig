@@ -36,7 +36,13 @@ else
     git checkout -q stable; git pull -q --ff-only origin stable
 fi
 git tag -a "$VER" -m "demo rig $VER"
-git push -q origin stable "$VER"
+if [[ "$MODE" == cut ]]; then
+    # stable is a moving channel pointer; a cut release REPLACES its history
+    git push -q --force-with-lease origin stable
+else
+    git push -q origin stable
+fi
+git push -q origin "$VER"
 echo "git: stable -> $(git rev-parse --short HEAD), tag $VER"
 
 # launcher: retag the digest currently behind :latest — in CI, which holds push creds
