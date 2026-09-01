@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# qemu/rig-qemu — Model 3 driver: the demo rig as pure QEMU VMs on this Linux
+# host, no Docker on the host. Same code/pins as the container mode; guests sit
+# on a libvirt NAT bridge and are directly addressable (192.168.150.0/24).
+#   prep            one-time host prep (sudo): packages, libvirt net, bridge ACL
+#   up              rig-init + boot the six infra VMs, wait healthy
+#   status          per-VM state
+#   ssh NODE [cmd]  shell into a guest (app-1, dns-1, ..., kit-a)
+#   console NODE    serial console (alpine/alpine on kits; Ctrl-\ detaches)
+#   stack NODE      re-run the in-guest stack
+#   kit NAME        boot + stage + mint + enrol a kit (demo|a|b)
+#   stop | down     graceful VM shutdown | shutdown (state kept either way)
+#   destroy         stop + DELETE all state (disks, CA, secrets, identities)
+# Needs: qemu/prep-host.sh once; AWS_PROFILE (or keys) of an ECR pull user.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$HERE/qemu/env.sh"
+source "$RIG_LIB"
+INFRA=(RIG_APP RIG_DNS_1 RIG_DNS_2 RIG_GW_1 RIG_GW_2 RIG_OBS_1)
+nkey() { case "$1" in app-1) echo RIG_APP;; dns-1) echo RIG_DNS_1;; dns-2) echo RIG_DNS_2;; gw-1) echo RIG_GW_1;; gw-2) echo RIG_GW_2;; obs-1) echo RIG_OBS_1;; kit-demo) echo RIG_KIT_DEMO;; kit-a) echo RIG_KIT_A;; kit-b) echo RIG_KIT_B;; *) die "unknown node $1";; esac; }
+nname() { local k; k=$(nkey "$1"); local n; n=$(eval echo "\${${k}_NAME}"); echo "${n#rig2-}"; }
+pid_of() { local p="$QDIR/run/$1/qemu.pid"; [[ -f $p ]] && kill -0 "$(cat "$p")" 2>/dev/null && cat "$p" || true; }
+role_env() { # export ROLE/RAM_MB/VCPUS/TPM for a NODE_KEY
+    case "$1" in
+      RIG_APP)   export ROLE=app RAM_MB="${RIG_APP_RAM_MB:-4096}" VCPUS="${RIG_APP_VCPUS:-2}" TPM=0 RIG_HTTP_PORT="${RIG_HTTP_PORT:-}" ;;
+      RIG_DNS_*) export ROLE=dns RAM_MB="${RIG_DNS_RAM_MB:-2048}" VCPUS="${RIG_DNS_VCPUS:-2}" TPM=0 ;;
+      RIG_GW_*)  export ROLE=gw  RAM_MB="${RIG_GW_RAM_MB:-2048}"  VCPUS="${RIG_GW_VCPUS:-2}"  TPM=0 ;;
+      RIG_OBS_*) export ROLE=obs RAM_MB="${RIG_OBS_RAM_MB:-4096}" VCPUS="${RIG_OBS_VCPUS:-2}" TPM=0 ;;
+      RIG_KIT_*) export ROLE=kit RAM_MB="${RIG_KIT_RAM_MB:-1024}" VCPUS="${RIG_KIT_VCPUS:-1}" TPM=1 ;;
+    esac
+}
+launch() { # NODE_KEY
+    local key="$1" node; node=$(eval echo "\${${key}_NAME}"); node="${node#rig2-}"
+    [[ -n "$(pid_of "$node")" ]] && { echo "  $node already running"; return 0; }
+    role_env "$key"
+    ( setsid env NODE_KEY="$key" ROLE="$ROLE" RAM_MB="$RAM_MB" VCPUS="$VCPUS" TPM="$TPM" \
+        "$HERE/qemu/run-node.sh" "$key" >>"$QDIR/log/$node.log" 2>&1 & ) </dev/null
+    echo "  $node launched (log: .qemu/log/$node.log)"
+}
+healthy() { local n="$1"; local k; k=$(nkey "$n"); local ip; ip=$(eval echo "\${${k}_IP}")
+    nc -z -w2 "$ip" 22 >/dev/null 2>&1 || return 1
+    [[ "$n" == kit-* ]] && return 0
+    [[ -f "$QDIR/state/$n/share/ready" ]]; }
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  prep) exec "$HERE/qemu/prep-host.sh" ;;
+  up)
+    ip link show virbr-cwrig >/dev/null 2>&1 || die "bridge virbr-cwrig missing — run: qemu/rig-qemu prep"
+    MODE="$(virsh --connect qemu:///system net-dumpxml corewaf-rig-qemu 2>/dev/null | sed -n "s/.*forward mode='\([a-z]*\)'.*/\1/p" | head -1)"
+    log "network mode: ${MODE:-nat} (nat = this host only; route = LAN-reachable, cloud-like — qemu/rig-qemu route-info)"
+    log "rig-init (base image, CA, secrets, ssh, registry auth)"
+    rig-init
+    for key in "${INFRA[@]}"; do launch "$key"; done
+    log "waiting for the VMs (first boot can take ~10 min)"
+    for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1; do
+        for _ in $(seq 1 120); do healthy "$n" && break; sleep 5; done
+        healthy "$n" && printf '  \033[32m✓\033[0m %s\n' "$n" || printf '  \033[31m✗\033[0m %s (see .qemu/log/%s.log)\n' "$n" "$n"
+    done
+    echo "GUI:     http://gui-1.rig.internal:8080   (or http://192.168.150.10:8080 — hosts block: scripts/hosts-block.sh)"
+    echo "Grafana: http://grafana.rig.internal:3000 (or http://192.168.150.40:3000)" ;;
+  status) for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1 kit-demo kit-a kit-b; do
+        p=$(pid_of "$n"); [[ -z "$p" ]] && continue
+        healthy "$n" && st="healthy" || st="starting/unhealthy"
+        printf '  %-9s pid %-7s %s\n' "$n" "$p" "$st"; done ;;
+  ssh) n="${1:?node}"; shift || true; k=$(nkey "$n"); ip=$(eval echo "\${${k}_IP}")
+       exec ssh -i "$SSH_DIR/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "alpine@$ip" "$@" ;;
+  console) n="${1:?node}"; exec env RUN_DIR="$QDIR/run/$n" socat -,raw,echo=0,escape=0x1c "unix-connect:$QDIR/run/$n/ttyS1.sock" ;;
+  stack) n="${1:?node}"; k=$(nkey "$n"); role_env "$k"
+       env NODE_KEY="$k" ROLE="$ROLE" RUN_DIR="$QDIR/run/$n" STATE_DIR="$QDIR/state/$n" vm-stack ;;
+  kit) NAME="${1:-demo}"; key=$(nkey "kit-$NAME"); n="kit-$NAME"
+       launch "$key"
+       for _ in $(seq 1 120); do healthy "$n" && break; sleep 5; done; healthy "$n" || die "kit guest never came up"
+       role_env "$key"
+       env NODE_KEY="$key" ROLE=kit STATE_DIR="$QDIR/state/$n" RUN_DIR="$QDIR/run/$n" kit-stage
+       TOKEN="$(env RIG_LIB="$RIG_LIB" rig mint "kit-$NAME" "${TENANT:-}" 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
+       [[ -n "$TOKEN" ]] || TOKEN="$(rig mint "kit-$NAME" corero-system-owner-tunnel-gateway 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
+       [[ -n "$TOKEN" ]] || die "could not mint a token"
+       env NODE_KEY="$key" ROLE=kit STATE_DIR="$QDIR/state/$n" RUN_DIR="$QDIR/run/$n" kit-enrol "$TOKEN" ;;
+  stop|down) for n in kit-demo kit-a kit-b app-1 dns-1 dns-2 gw-1 gw-2 obs-1; do
+        p=$(pid_of "$n"); [[ -n "$p" ]] && { echo "  stopping $n"; kill -TERM "$p" 2>/dev/null || true; }; done
+       for _ in $(seq 1 100); do pgrep -f "qemu-system-x86_64.*demo-rig-node" >/dev/null || break; sleep 2; done; echo "stopped" ;;
+  destroy) "$0" stop; rm -rf "$QDIR"; echo "state removed (.qemu/)" ;;
+  verify) exec env RIG_LIB="$RIG_LIB" rig verify ;;
+  route-info)
+    LANIP="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' | head -1)"
+    echo "Cloud-like access from OTHER machines (requires route mode — qemu/rig-qemu net route):"
+    echo "  Linux/mac desktop:  sudo ip route add ${RIG_NET_CIDR} via ${LANIP}"
+    echo "  Windows desktop:    route add ${RIG_NET_CIDR%/*} mask ${RIG_NET_NETMASK} ${LANIP}"
+    echo "  hosts file (both):  run scripts/hosts-block.sh here and paste the block"
+    echo "Then browse http://gui-1.${RIG_DOMAIN}:8080 — real IPs, real vhosts, real edge TLS." ;;
+  net)
+    WANT="${1:?usage: rig-qemu net nat|route}"; [[ "$WANT" == nat || "$WANT" == route ]] || die "mode must be nat or route"
+    pgrep -f "qemu-system-x86_64.*demo-rig-node" >/dev/null && die "stop the VMs first (rig-qemu stop)"
+    tmp="$(mktemp)"; sed "s/<forward mode='[a-z]*'\/>/<forward mode='$WANT'\/>/" "$HERE/qemu/corewaf-rig.net.xml" > "$tmp"
+    echo "Switching the libvirt network to '$WANT' needs root once:"
+    echo "  sudo sh -c \"virsh net-destroy corewaf-rig-qemu; virsh net-undefine corewaf-rig-qemu; virsh net-define $tmp && virsh net-start corewaf-rig-qemu && virsh net-autostart corewaf-rig-qemu\""
+    if [[ "$WANT" == route ]]; then
+        echo "route mode also needs (root, once): ip_forward=1 + egress masquerade for ${RIG_NET_CIDR} on your WAN interface"
+        echo "  sudo sysctl -w net.ipv4.ip_forward=1"
+        echo "  sudo nft add table ip corewaf-rig ';' add chain ip corewaf-rig post '{ type nat hook postrouting priority srcnat; }' ';' add rule ip corewaf-rig post ip saddr ${RIG_NET_CIDR} ip daddr != ${RIG_NET_CIDR} masquerade"
+        echo "then: qemu/rig-qemu route-info   # the route + hosts lines for your desktop"
+    fi ;;
+  *) sed -n '2,15p' "$0" ;;
+esac

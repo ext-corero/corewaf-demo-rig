@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kit-enrol <TOKEN> — enrol this node's kit guest (docker compose exec kit-demo kit-enrol <token>)
 set -euo pipefail
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 TOKEN="${1:?usage: kit-enrol <token>}"
 vm-ssh "sudo mkdir -p /run/kit-state && sudo KIT_TOKEN='$TOKEN' KIT_REPO_DIR=/opt/corewaf-starter-kit CA_BUNDLE=/opt/kit-root.crt sh /opt/kit-shim/install-v2.sh"
 HWID=$(vm-ssh 'sudo cat /run/kit-state/hwId 2>/dev/null' || true); CIP=$(vm-ssh 'sudo cat /run/kit-state/client.ip 2>/dev/null' || true); SEP=$(vm-ssh 'sudo cat /run/kit-state/server.endpoint 2>/dev/null' || true)

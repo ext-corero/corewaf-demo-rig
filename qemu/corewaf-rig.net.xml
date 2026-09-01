@@ -1,0 +1,11 @@
+<!-- Pure-QEMU mode rig network: libvirt NAT bridge, static guest IPs (the seeds
+     configure them), deliberately NO dnsmasq DNS/DHCP — name resolution is the
+     rig's own dns VMs, the behaviour under test. -->
+<network>
+  <name>corewaf-rig-qemu</name>
+  <forward mode='nat'/>
+  <bridge name='virbr-cwrig' stp='on' delay='0'/>
+  <domain name='rig.internal'/>
+  <dns enable='no'/>
+  <ip address='192.168.150.1' netmask='255.255.255.0'/>
+</network>

@@ -7,7 +7,7 @@
 #   ssh          lab keypair if missing
 #   auth         docker-config.json for the guests (fresh 12h ECR token every run)
 set -euo pipefail
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 mkdir -p "$BASE_DIR" "$CA_DIR" "$SECRETS_DIR" "$AUTH_DIR" "$SSH_DIR"
 
 log "registry: $(reg_host)"

@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 # vm-ssh [cmd...] — ssh into this node's guest (from the container's aux IP).
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 exec ssh "${SSH_OPTS[@]}" ${VM_SSH_TTY:+-t} "alpine@${NODE_IP:?}" "$@"

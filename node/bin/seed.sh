@@ -4,23 +4,31 @@
 # ssh key, CA trust) with 9p mounts; plus static networking (network-config v1).
 # Usage: seed.sh <out-dir>   (needs NODE_KEY, ROLE, NODE_IP, NODE_MAC, NODE_FQDN, MTU)
 set -euo pipefail
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 OUT="${1:?out dir}"; mkdir -p "$OUT"
 pubkey="$(<"$SSH_DIR/id_lab.pub")"
 short="${NODE_FQDN%.$RIG_DOMAIN}"
 resolvers=""; for ns in $RIG_RESOLVERS; do resolvers+="nameserver $ns\n"; done
 # "node" = this node's hypervisor forwarder on the aux IP (see entrypoint.sh); an IP is used verbatim
-[[ "${RIG_BOOTSTRAP_RESOLVER:-}" == node ]] && RIG_BOOTSTRAP_RESOLVER="$AUX_IP"
+if [[ "${RIG_BOOTSTRAP_RESOLVER:-}" == node ]]; then
+    if [[ "${RIG_NET_MODE:-router}" == bridge ]]; then RIG_BOOTSTRAP_RESOLVER="${RIG_BOOTSTRAP_RESOLVER_BRIDGE:-1.1.1.1}"
+    else RIG_BOOTSTRAP_RESOLVER="$AUX_IP"; fi
+fi
 [[ -n "${RIG_BOOTSTRAP_RESOLVER:-}" ]] && resolvers+="nameserver $RIG_BOOTSTRAP_RESOLVER\n"
 dns_list="$(echo $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-} | sed 's/ /, /g')"
-# The node container (aux IP) is the guest's router for EVERYTHING — default AND
-# intra-rig — the guest carries a /32 and never ARPs for peers or the docker
-# gateway. The
-# container masquerades guest egress to its aux identity (see entrypoint.sh) —
-# Docker Desktop's fabric gateway blackholes long-lived registered identities
-# over time, while dynamically-learned ones keep working; on Linux this is just
-# a second (harmless) NAT hop. Inter-VM traffic is on-link and never routes.
-GW="$AUX_IP"
+# Two network modes:
+#   router (default) — container mode: the node container (aux IP) is the guest's
+#     router for EVERYTHING; the guest carries a /32 (Docker Desktop's fabric
+#     blackholes long-registered identities; routing via the container's own
+#     identity sidesteps it; on Linux it is a harmless extra NAT hop).
+#   bridge — pure-QEMU host mode (qemu/rig-qemu): classic /24 on a libvirt NAT
+#     bridge, default gw = the bridge address; VMs are directly addressable.
+NET_MODE="${RIG_NET_MODE:-router}"
+if [[ "$NET_MODE" == bridge ]]; then
+    GW="$RIG_NET_HOST_GW"
+else
+    GW="$AUX_IP"
+fi
 
 bootstrap="NODE_NAME=$short\nFQDN=$NODE_FQDN\nZONE=$RIG_DOMAIN\nNODE_IP=$NODE_IP\n"
 # the host port the hypervisor publishes the GUI/API on (browser-facing *.localhost URLs)
@@ -83,9 +91,18 @@ bootcmd:
   - grep -q ttyS1 /etc/inittab || echo 'ttyS1::respawn:/sbin/getty -L 115200 ttyS1 vt100' >> /etc/inittab
   - kill -HUP 1
   - ip link set eth0 up || true
+$( if [[ "$NET_MODE" == bridge ]]; then
+cat <<B
+  - ip addr replace $NODE_IP/24 dev eth0 || true
+  - ip route replace default via $GW || true
+B
+else
+cat <<B
   - ip addr replace $NODE_IP/32 dev eth0 || true
   - ip route replace $GW/32 dev eth0 || true
   - ip route replace default via $GW || true
+B
+fi )
 write_files:
   - path: /etc/resolv.conf
     content: |
@@ -99,10 +116,20 @@ cat <<UD
       iface lo inet loopback
       auto eth0
       iface eth0 inet static
+$( if [[ "$NET_MODE" == bridge ]]; then
+cat <<B
+        address $NODE_IP/24
+        gateway $GW
+        mtu \${MTU:-1500}
+B
+else
+cat <<B
         address $NODE_IP/32
-        mtu ${MTU:-1500}
+        mtu \${MTU:-1500}
         post-up ip route replace $GW/32 dev eth0
         post-up ip route replace default via $GW
+B
+fi )
   - path: /etc/corewaf-bootstrap
     permissions: '0644'
     content: |
@@ -129,6 +156,16 @@ config:
     mac_address: "$NODE_MAC"
     mtu: ${MTU:-1500}
     subnets:
+$( if [[ "$NET_MODE" == bridge ]]; then
+cat <<B
+      - type: static
+        address: $NODE_IP/24
+        gateway: $GW
+        dns_nameservers: [$dns_list]
+        dns_search: [$RIG_DOMAIN]
+B
+else
+cat <<B
       - type: static
         address: $NODE_IP/32
         routes:
@@ -140,6 +177,8 @@ config:
             gateway: $GW
         dns_nameservers: [$dns_list]
         dns_search: [$RIG_DOMAIN]
+B
+fi )
 NC
 xorriso -as mkisofs -quiet -V cidata -o "$OUT/seed.iso" -J -r -graft-points \
   "user-data=$OUT/user-data" "meta-data=$OUT/meta-data" "network-config=$OUT/network-config"

@@ -2,7 +2,7 @@
 # vm-stack — (re)start the role's docker stack inside the guest. Identical to the
 # libvirt-era `vmlab.sh stack`: the booted node is the source of truth; compose
 # reads /etc/corewaf-bootstrap + inventory.env + images.env from /opt/v2.
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 [[ "$ROLE" == kit ]] && { log "kit nodes have no rig stack"; exit 0; }
 files="-f compose/$ROLE.yml"; build=""
 if [[ "${RIG_MODE:-pull}" == source ]]; then files="$files -f compose/build/$ROLE.yml"; build="--build"; fi

@@ -6,8 +6,8 @@
 #   CoreWAF registry and re-tagged to the names the public compose expects, the
 #   /opt/kit-demo helper (corewaf-demo-up) and a console login (alpine/alpine).
 set -euo pipefail
-source /usr/local/bin/rig-lib.sh
-RIG_DIR=/rig/v2; source /rig/v2/lib/registry.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
+RIG_DIR="${V2_DIR:-/rig/v2}"; source "$RIG_DIR/lib/registry.sh"
 log "waiting for guest ssh"
 for _ in $(seq 1 90); do nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1 && break; sleep 2; done
 vm-ssh 'true' || die "guest not reachable"

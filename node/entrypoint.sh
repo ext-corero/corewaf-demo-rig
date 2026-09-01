@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rig-node entrypoint: turn this container into the hypervisor for ONE rig VM.
 set -euo pipefail
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 # Dispatch: `rig-init`, `cli` (idle), any helper verb (rig, vm-ssh, ...), or a shell.
 case "${1:-node}" in
   node)     ;;
@@ -72,19 +72,19 @@ if [[ ! -s "$STATE_DIR/disk.qcow2" ]]; then
 fi
 
 # ---- seed ----
-IID="$(seed.sh /run/seed)"; log "seed: instance-id $IID"
+IID="$(seed.sh "$RUN_DIR/seed")"; log "seed: instance-id $IID"
 
 # ---- TPM (kits) ----
 TPM_ARGS=()
 if [[ "${TPM:-0}" == 1 ]]; then
-    swtpm socket --tpm2 --tpmstate dir="$STATE_DIR/tpm" --ctrl type=unixio,path=/run/swtpm.sock --daemon --log level=1
-    TPM_ARGS=(-chardev socket,id=chrtpm,path=/run/swtpm.sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-crb,tpmdev=tpm0)
+    swtpm socket --tpm2 --tpmstate dir="$STATE_DIR/tpm" --ctrl type=unixio,path=$RUN_DIR/swtpm.sock --daemon --log level=1
+    TPM_ARGS=(-chardev socket,id=chrtpm,path=$RUN_DIR/swtpm.sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-crb,tpmdev=tpm0)
 fi
-FS_ARGS=(-virtfs "local,path=$RIG_ROOT/v2,mount_tag=v2cfg,security_model=none,readonly=on"
+FS_ARGS=(-virtfs "local,path=$V2_DIR,mount_tag=v2cfg,security_model=none,readonly=on"
          -virtfs "local,path=$SECRETS_DIR,mount_tag=secrets,security_model=none"
          -virtfs "local,path=$CA_DIR,mount_tag=rigca,security_model=none,readonly=on"
          -virtfs "local,path=$STATE_DIR/share,mount_tag=nodestate,security_model=none")
-KITSHIM=/rig/kit-shim; [[ -d "$KITSHIM" ]] || KITSHIM=/rig/v2/kit-shim
+KITSHIM=${KITSHIM:-/rig/kit-shim}; [[ -d "$KITSHIM" ]] || KITSHIM=$V2_DIR/kit-shim
 [[ "$ROLE" == kit && -d "$KITSHIM" ]] && FS_ARGS+=(-virtfs "local,path=$KITSHIM,mount_tag=kitshim,security_model=none,readonly=on")
 [[ "${RIG_MODE:-pull}" == source && -d /rig/workspace ]] && FS_ARGS+=(-virtfs "local,path=/rig/workspace,mount_tag=workspace,security_model=none,readonly=on")
 
@@ -99,17 +99,17 @@ qemu-system-x86_64 -enable-kvm -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m
   -uuid "$NODE_UUID" -smbios "type=1,manufacturer=CoreWAF,product=demo-rig-node,serial=$NODE_NAME,uuid=$NODE_UUID" \
   -display none -vga none -monitor none \
   -chardev stdio,id=con0,signal=off -serial chardev:con0 \
-  -serial unix:/run/ttyS1.sock,server=on,wait=off \
-  -qmp unix:/run/qmp.sock,server=on,wait=off \
+  -serial unix:$RUN_DIR/ttyS1.sock,server=on,wait=off \
+  -qmp unix:$RUN_DIR/qmp.sock,server=on,wait=off \
   -drive file="$STATE_DIR/disk.qcow2",if=virtio,format=qcow2,cache=writeback,discard=unmap \
-  -drive file=/run/seed/seed.iso,media=cdrom,format=raw,readonly=on \
+  -drive file=$RUN_DIR/seed/seed.iso,media=cdrom,format=raw,readonly=on \
   -netdev tap,id=net0,ifname=tap0,script=no,downscript=no \
   -device virtio-net-pci,netdev=net0,mac="$NODE_MAC" \
   -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0 \
   "${FS_ARGS[@]}" "${TPM_ARGS[@]}" &
 QPID=$!
 
-qmp() { printf '{"execute":"qmp_capabilities"}\n{"execute":"%s"}\n' "$1" | socat -T3 - unix-connect:/run/qmp.sock >/dev/null 2>&1 || true; }
+qmp() { printf '{"execute":"qmp_capabilities"}\n{"execute":"%s"}\n' "$1" | socat -T3 - unix-connect:$RUN_DIR/qmp.sock >/dev/null 2>&1 || true; }
 shutdown_vm() {
     log "stop: ACPI powerdown"; qmp system_powerdown
     for _ in $(seq 1 20); do kill -0 "$QPID" 2>/dev/null || return 0; sleep 1; done

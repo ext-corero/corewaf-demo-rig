@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vm-health — container HEALTHCHECK: qemu alive, guest ssh up, stack launched.
-source /usr/local/bin/rig-lib.sh
+source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 pgrep -x qemu-system-x86 >/dev/null || pgrep -f qemu-system-x86_64 >/dev/null || exit 1
 nc -z -w2 "${NODE_IP:?}" 22 >/dev/null 2>&1 || exit 1
 [[ "$ROLE" == kit ]] && exit 0

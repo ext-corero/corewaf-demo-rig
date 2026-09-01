@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # rig-lib.sh — shared by the node image scripts. Expects the rig env
 # (inventory.env + images.env, loaded by compose env_file) in the environment.
-RIG_ROOT=/rig                      # bind: repo checkout (ro) -> exported to guests as /opt/v2
-BASE_DIR=/rig/base                 # volume rig-base
-CA_DIR=/rig/ca                     # volume rig-ca
-SECRETS_DIR=/rig/shared-secrets    # volume rig-shared-secrets (rw; app writes, gw/obs read)
-AUTH_DIR=/rig/auth                 # volume rig-auth  (docker-config.json)
-SSH_DIR=/rig/ssh                   # volume rig-ssh   (id_lab, id_lab.pub)
-STATE_DIR=/state                   # per-node volume (disk.qcow2, tpm/, share/)
+# Paths are overridable so the SAME scripts drive both hypervisor flavours:
+# container mode (defaults below = the node-image volumes) and pure-QEMU host
+# mode (qemu/rig-qemu exports its own tree under the checkout's .qemu/).
+: "${RIG_ROOT:=/rig}"                       # parent of the repo checkout
+: "${V2_DIR:=$RIG_ROOT/v2}"                 # the repo checkout (exported to guests as /opt/v2)
+: "${BASE_DIR:=$RIG_ROOT/base}"             # pulled VM base image (generations)
+: "${CA_DIR:=$RIG_ROOT/ca}"                 # rig root CA
+: "${SECRETS_DIR:=$RIG_ROOT/shared-secrets}" # rw; app writes, gw/obs read
+: "${AUTH_DIR:=$RIG_ROOT/auth}"             # docker-config.json (+aws-credentials)
+: "${SSH_DIR:=$RIG_ROOT/ssh}"               # id_lab keypair
+: "${STATE_DIR:=/state}"                    # per-node state (disk.qcow2, tpm/, share/)
+: "${RUN_DIR:=/run}"                        # per-node sockets + rendered seed
 SSH_OPTS=(-i "$SSH_DIR/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes)
 log() { printf '[%s] %s\n' "${NODE_NAME:-rig}" "$*" >&2; }
 die() { printf '[%s] ERROR: %s\n' "${NODE_NAME:-rig}" "$*" >&2; exit 1; }
