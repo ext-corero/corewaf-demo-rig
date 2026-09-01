@@ -21,8 +21,9 @@ const ddClient = createDockerDesktopClient();
 
 // Channel is baked at build time: the stable extension build defaults to the
 // :stable launcher (which in turn checks out the stable rig branch).
+const CHANNEL = import.meta.env.VITE_LAUNCHER_TAG ?? 'latest';
 const DEFAULT_IMAGE =
-  `123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:${import.meta.env.VITE_LAUNCHER_TAG ?? 'latest'}`;
+  `123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:${CHANNEL}`;
 const DEFAULT_PROFILE = 'corewaf-ecr';
 const NODES = ['app-1', 'dns-1', 'dns-2', 'gw-1', 'gw-2', 'obs-1'];
 const KITS = ['demo', 'a', 'b'];
@@ -43,7 +44,7 @@ function healthColor(h: string): 'success' | 'warning' | 'error' | 'default' {
 
 export default function App() {
   const [profile, setProfile] = useState(() => load('rig.profile', DEFAULT_PROFILE));
-  const [image, setImage] = useState(() => load('rig.image', DEFAULT_IMAGE));
+  const [image, setImage] = useState(() => load(`rig.image.${CHANNEL}`, DEFAULT_IMAGE));
   const [guiPortCfg, setGuiPortCfg] = useState(() => load('rig.httpPort', '28080'));
   const [grafanaPortCfg, setGrafanaPortCfg] = useState(() => load('rig.grafanaPort', '23000'));
   const [rows, setRows] = useState<Row[]>([]);
@@ -56,7 +57,7 @@ export default function App() {
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => save('rig.profile', profile), [profile]);
-  useEffect(() => save('rig.image', image), [image]);
+  useEffect(() => save(`rig.image.${CHANNEL}`, image), [image]);
   useEffect(() => save('rig.httpPort', guiPortCfg), [guiPortCfg]);
   useEffect(() => save('rig.grafanaPort', grafanaPortCfg), [grafanaPortCfg]);
 
@@ -175,6 +176,11 @@ export default function App() {
         </span></Tooltip>
         <Tooltip title="Add a WAF kit — automated enrolment, or staged for a manual in-VM demo"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>
+        </span></Tooltip>
+        <Tooltip title="Recreate the kit containers with fresh network endpoints — fixes kits gone stale (Docker Desktop endpoint aging). Identities and enrolments persist; tunnels reconnect in ~1 min."><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined"
+            disabled={!!busy || !rows.some((r) => r.name.startsWith('rig-kit-'))}
+            onClick={() => run('refresh-kits')}>Refresh kits</Button>
         </span></Tooltip>
         <Box sx={{ flex: 1 }} />
         <Tooltip title="Graceful VM shutdown; disks kept"><span>
