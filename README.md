@@ -25,7 +25,7 @@ streamline this in the future; correctness of what you demonstrate comes first.
 |---|-------|------|----------|
 | 1 | **Docker Desktop extension** | Windows 10/11 (or macOS) with Docker Desktop | SEs on a corporate laptop — buttons, no terminal required |
 | 2 | **Docker on Linux** | Any Linux with Docker Engine + KVM | Linux laptops/workstations, headless demo boxes |
-| 3 | **Inside a virtual machine** | A QEMU/KVM, vSphere or cloud VM running Linux | Shared demo servers, cloud sandboxes, keeping the laptop clean |
+| 3 | **Pure QEMU (no Docker)** | Linux with KVM + libvirt | Developers; validating routing/proxies/TLS natively; LAN-reachable, cloud-like deployments |
 
 All three run the *same rig* with the same scripts underneath — they are
 interchangeable on one host, and every instruction below uses the **stable** release
@@ -153,26 +153,39 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ~/.aws:/root/.aw
 ```
 Verbs: `up status verify ps stat logs exec kit stage refresh-kits stop down reset url`.
 
-## Model 3 — Inside a virtual machine
+## Model 3 — Pure QEMU on Linux (no Docker on the host)
 
-Run the whole rig inside one Linux VM — a shared demo server, a cloud sandbox, or a
-local QEMU machine — and keep your laptop untouched.
+The rig's VMs run directly under QEMU/KVM on your Linux machine — no Docker layer,
+and the VMs sit on a routed libvirt bridge as **first-class network citizens**:
+every service is reachable at its real IP and internal URL (`gui-1.rig.internal`,
+`gw-1.rig.internal`, …), edge TLS presents real SNI, and — in route mode — other
+machines on your LAN reach the rig like any cloud environment. Same images, same
+pins, same scripts as the Docker models; only the hypervisor layer differs.
+Preferred for development and for validating proxies/gateways end-to-end.
 
-1. **Create the VM** with nested virtualization exposed:
-   - QEMU/KVM: `-cpu host` (host must have `kvm_intel nested=1` / `kvm_amd nested=1`);
-   - vSphere: VM → CPU → *Expose hardware assisted virtualization to the guest OS*;
-   - cloud: pick an instance family that supports nested virt (e.g. bare-metal or
-     Azure Dv3+/GCP with nested enabled).
-   Size it per the hardware line above (8 vCPU / 24 GB / 40 GB).
-2. **Inside the VM**: install Ubuntu 22.04/24.04 (or similar), Docker Engine, and
-   verify `/dev/kvm` exists in the guest.
-3. **Continue exactly as Model 2** inside the VM — including the
-   [common prerequisite](#registry-credential) (AWS CLI + profile) there.
-4. **Reaching the GUI from outside the VM**: forward or open the two host ports the
-   bootstrap printed (defaults 28080 GUI, 23000 Grafana), then browse
-   `http://gui-1.localhost:28080` through an SSH tunnel
-   (`ssh -L 28080:localhost:28080 …`) or use the VM's address with a hosts entry
-   from `scripts/hosts-block.sh`.
+1. **One-time host prep** (root, once): `qemu/prep-host.sh` — installs
+   qemu/libvirt/swtpm/oras tooling, defines the `corewaf-rig-qemu` NAT network
+   (bridge `virbr-cwrig`, 192.168.150.1/24), and creates per-node user-owned taps.
+2. **Registry credential**: the [common prerequisite](#registry-credential).
+3. **Up**:
+   ```bash
+   AWS_PROFILE=corewaf-ecr qemu/rig-qemu up      # rig-init + six VMs; ~10 min first boot
+   ```
+   State lives under `.qemu/` in the checkout (disks, CA, secrets, logs).
+4. **Browse natively**: add the hosts block (`scripts/hosts-block.sh`, paste with
+   sudo) and open `http://gui-1.rig.internal:8080` / `http://grafana.rig.internal:3000`
+   — real IPs, no port mapping.
+5. **Kits**: `AWS_PROFILE=… qemu/rig-qemu kit a` (or `demo`/`b`) — same enrolment
+   flow as everywhere else. `verify`, `ssh NODE`, `console NODE`, `status`,
+   `stack NODE`, `stop`, `destroy` round out the verbs.
+6. **LAN / cloud-like access from other machines** (optional): switch the network
+   to routed mode — `qemu/rig-qemu net route` prints the two root commands
+   (network redefine + ip_forward/masquerade), then `qemu/rig-qemu route-info`
+   prints what the *other* machine needs: one static route
+   (`ip route add 192.168.150.0/24 via <this-host>` / Windows `route add`) plus
+   the hosts block. After that, a desktop box browses `gui-1.rig.internal`,
+   negotiates the gateways' TLS and exercises every proxy exactly as a customer
+   network would.
 
 ---
 

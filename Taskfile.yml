@@ -116,3 +116,10 @@ tasks:
     desc: 'Publish .cache/corewaf-rig-base.qcow2 to the registry (TAG=<tag>; push identity)'
     requires: { vars: [TAG] }
     cmds: ['bash scripts/publish-base.sh {{.TAG}}']
+
+  qemu:up:
+    desc: 'Model 3 — pure-QEMU rig (no Docker on the host): boot the six VMs'
+    cmds: ['qemu/rig-qemu up']
+  qemu:verify: { cmds: ['qemu/rig-qemu verify'] }
+  qemu:status: { cmds: ['qemu/rig-qemu status'] }
+  qemu:stop:   { cmds: ['qemu/rig-qemu stop'] }
