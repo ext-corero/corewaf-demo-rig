@@ -12,4 +12,7 @@ run() { vm-ssh "doas rc-service docker start >/dev/null 2>&1 || true; doas sh -c
 rc=0
 run "$files" || rc=$?
 if [[ "$ROLE" == dns ]]; then run "-f compose/secrets.yml" || rc=$?; fi
+# a successful (re)start IS readiness — restore the health flag so a manual
+# rerun (the failure hint) turns the container healthy again, not just the boot path
+[[ $rc -eq 0 ]] && touch "$STATE_DIR/share/ready"
 exit $rc
