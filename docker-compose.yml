@@ -212,6 +212,8 @@ services:
     container_name: rig-backstage
     profiles: [portal]
     restart: unless-stopped
+    environment:
+      COREWAF_BACKSTAGE_PUBLIC_URL: "http://localhost:${RIG_BACKSTAGE_PORT:-27007}"
     ports: ["${RIG_BACKSTAGE_PORT:-27007}:7007"]
 
   cli:
