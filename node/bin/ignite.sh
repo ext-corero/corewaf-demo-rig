@@ -31,6 +31,11 @@ for key in RIG_APP RIG_DNS_1 RIG_DNS_2 RIG_GW_1 RIG_GW_2 RIG_OBS_1; do
     ip_v="$(eval "echo \${${key}_IP:-}")"; fq_v="$(eval "echo \${${key}_FQDN:-}")"
     [[ -n "$ip_v" && -n "$fq_v" ]] || continue
     line="$ip_v $fq_v ${fq_v%.$RIG_DOMAIN}"
+    # platform service aliases (the rig's static_hosts): CA/GUI live on app, obs UIs on obs
+    case "$key" in
+        RIG_APP)   line+="\n          $ip_v gui-1.$RIG_DOMAIN gui-1 stepca.$RIG_DOMAIN stepca" ;;
+        RIG_OBS_1) line+="\n          $ip_v grafana.$RIG_DOMAIN grafana mimir.$RIG_DOMAIN mimir loki.$RIG_DOMAIN loki alertmanager.$RIG_DOMAIN alertmanager" ;;
+    esac
     hosts_entries+="${hosts_entries:+\n          }$line"
 done
 jq -n \
@@ -65,7 +70,7 @@ else
           Gateway=$AUX_IP
           GatewayOnLink=yes"
 fi
-DNSLINES=""; for ns in $RIG_RESOLVERS; do DNSLINES+="          DNS=$ns"$'\n'; done
+DNSLINES=""; for ns in $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-}; do DNSLINES+="          DNS=$ns"$'\n'; done
 auth_json="$(cat "$AUTH_DIR/docker-config.json")"
 aws_creds=""; if [[ -s "$AUTH_DIR/aws-credentials" ]]; then
     auth_json="$(printf '{"credHelpers": {"%s": "ecr-login"}}' "$(reg_host)")"
@@ -109,12 +114,6 @@ storage:
 
 $NETBLOCK
 $DNSLINES          Domains=$RIG_DOMAIN
-    - path: /etc/systemd/resolved.conf.d/10-rig.conf
-      mode: 0644
-      contents:
-        inline: |
-          [Resolve]
-          FallbackDNS=${RIG_BOOTSTRAP_RESOLVER:-1.1.1.1}
     - path: /etc/corewaf-bootstrap
       mode: 0644
       contents:
