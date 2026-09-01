@@ -109,11 +109,11 @@ urls() { local h g; h="$(sed -n 's/^RIG_HTTP_PORT=//p' .env)"; g="$(sed -n 's/^R
 
 case "$cmd" in
   up)     step "rig-launcher up"; ensure_repo; kvm_check; aws_env; registry_login; pick_ports
-          step "docker compose up -d"; set -a; . .env; set +a; compose up -d; wait_healthy; echo; urls ;;
+          step "docker compose up -d"; set -a; . .env; [ -f images.env ] && . images.env; set +a; compose up -d; wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
   verify) ensure_repo; compose --profile tools run --rm -T cli rig verify ;;
   ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T cli rig "$cmd" "$@" ;;
-  kit)    ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+  kit)    ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
           [[ "$(docker inspect -f '{{.State.Health.Status}}' rig-app-1 2>/dev/null)" == healthy ]] || fail "the rig is not up/healthy (run: rig-launcher up)"
@@ -124,7 +124,7 @@ case "$cmd" in
           [[ -n "$TOKEN" ]] || fail "could not mint a token"; ok "token minted"
           compose --profile kit exec -T "$SVC" kit-enrol "$TOKEN" || fail "enrolment failed — rig-launcher logs $SVC, or: docker exec rig-$SVC vm-ssh 'sudo docker logs corewaf-tunnel'"
           compose --profile tools run --rm -T cli rig verify 2>/dev/null | sed -n '/WG peers/,/summary/p' ;;
-  stage)  ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+  stage)  ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "stage $NAME (manual demo — staged + token, NOT enrolled)"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
           [[ "$(docker inspect -f '{{.State.Health.Status}}' rig-app-1 2>/dev/null)" == healthy ]] || fail "the rig is not up/healthy (run: rig-launcher up)"
@@ -138,11 +138,11 @@ case "$cmd" in
           echo "  terminal:  docker exec -it rig-$SVC vm-ssh          (or: docker exec -it rig-$SVC console — login alpine/alpine)"
           echo "  in the VM: NO_UP=1 TOKEN=<token> bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-starter-kit/main/bootstrap.sh)"
           echo "             corewaf-demo-up" ;;
-  portal) ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+  portal) ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           step "Backstage portal (plain container, port ${RIG_BACKSTAGE_PORT:-27007})"
           compose --profile portal up -d backstage
           echo "Backstage: http://localhost:${RIG_BACKSTAGE_PORT:-27007}" ;;
-  refresh-kits) ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+  refresh-kits) ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           step "refresh kits — recreate kit node containers (fresh network endpoints; VM disks, identities and enrolments persist)"
           KITS="$(docker ps -a --filter name=rig-kit- --format '{{.Names}}' | sed 's/^rig-//' | tr '\n' ' ')"
           [[ -n "${KITS// /}" ]] || { warn "no kit containers to refresh"; exit 0; }
