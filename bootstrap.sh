@@ -11,7 +11,7 @@
 #   COREWAF_RIG_DIR / COREWAF_RIG_REF / NO_UP=1 as before.
 set -euo pipefail
 REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"
-REF="${COREWAF_RIG_REF:-main}"; DIR="${COREWAF_RIG_DIR:-corewaf-demo-rig}"
+REF="${COREWAF_RIG_REF:-stable}"; DIR="${COREWAF_RIG_DIR:-corewaf-demo-rig}"
 REGISTRY_HOST="123517950721.dkr.ecr.us-east-1.amazonaws.com"; REGION="us-east-1"
 step() { printf '\n── %s ──\n' "$*"; }; ok() { printf '  \e[32m✓\e[0m %s\n' "$*"; }; warn() { printf '  \e[33m!\e[0m %s\n' "$*"; }
 fail() { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }

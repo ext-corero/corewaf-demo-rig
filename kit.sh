@@ -16,7 +16,7 @@
 set -euo pipefail
 NAME="${1:-demo}"; case "$NAME" in demo|a|b) ;; *) echo "kit name must be demo, a or b" >&2; exit 2;; esac
 SVC="kit-$NAME"
-REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"; REF="${COREWAF_RIG_REF:-main}"
+REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"; REF="${COREWAF_RIG_REF:-stable}"
 DIR="${COREWAF_RIG_DIR:-corewaf-demo-rig}"
 step() { printf '\n── %s ──\n' "$*"; }; ok() { printf '  \e[32m✓\e[0m %s\n' "$*"; }
 fail() { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }
