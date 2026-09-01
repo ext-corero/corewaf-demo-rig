@@ -13,6 +13,13 @@
 : "${SSH_DIR:=$RIG_ROOT/ssh}"               # id_lab keypair
 : "${STATE_DIR:=/state}"                    # per-node state (disk.qcow2, tpm/, share/)
 : "${RUN_DIR:=/run}"                        # per-node sockets + rendered seed
+: "${RIG_OS:=alpine}"                       # infra guest OS: alpine | flatcar (kits always alpine)
+# Guest login/privilege words. Flatcar infra guests: core/sudo; Alpine: alpine/doas.
+if [[ "$RIG_OS" == flatcar && "${ROLE:-}" != kit ]]; then GUEST_USER=core; GUEST_SUDO=sudo; else GUEST_USER=alpine; GUEST_SUDO=doas; fi
+guest_user_for() { case "$1" in kit*) echo alpine ;; *) if [[ "$RIG_OS" == flatcar ]]; then echo core; else echo alpine; fi ;; esac; }
+guest_sudo_for() { if [[ "$(guest_user_for "$1")" == core ]]; then echo sudo; else echo doas; fi; }
+docker_start_cmd() { if [[ "$GUEST_SUDO" == sudo ]]; then echo "systemctl start docker"; else echo "rc-service docker start"; fi; }
+base_image() { if [[ "$RIG_OS" == flatcar && "${ROLE:-}" != kit ]]; then echo "$BASE_DIR/current-flatcar.qcow2"; else echo "$BASE_DIR/current.qcow2"; fi; }
 SSH_OPTS=(-i "$SSH_DIR/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o BatchMode=yes)
 log() { printf '[%s] %s\n' "${NODE_NAME:-rig}" "$*" >&2; }
 die() { printf '[%s] ERROR: %s\n' "${NODE_NAME:-rig}" "$*" >&2; exit 1; }

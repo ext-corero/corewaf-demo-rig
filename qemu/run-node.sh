@@ -13,11 +13,25 @@ export STATE_DIR="$QDIR/state/$NODE" RUN_DIR="$QDIR/run/$NODE"
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm" "$RUN_DIR"
 rm -f "$STATE_DIR/share/ready"
 
-BASE="$(readlink -f "$BASE_DIR/current.qcow2")"
+BASE="$(readlink -f "$(base_image)")"
 [[ -s "$STATE_DIR/disk.qcow2" ]] || { qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$STATE_DIR/disk.qcow2" "${DISK_SIZE:-16G}"; log "disk: new overlay on $(basename "$BASE")"; }
 
 export MTU=1500
-IID="$(seed.sh "$RUN_DIR/seed")"; log "seed: instance-id $IID"
+# alpine: NoCloud seed. flatcar: Ignition via fw_cfg + docker disk (see entrypoint.sh).
+if [[ "$RIG_OS" == flatcar && "$ROLE" != kit ]]; then
+    [[ -s "$STATE_DIR/docker.qcow2" ]] || { qemu-img create -q -f qcow2 "$STATE_DIR/docker.qcow2" "${DOCKER_DISK_SIZE:-20G}"; log "disk: new docker volume"; }
+    CFG="$(ignite.sh "$RUN_DIR/ignition")"; log "ignition: $CFG"
+    DISK_ARGS=(-drive "file=$STATE_DIR/disk.qcow2,if=none,id=root,format=qcow2,cache=writeback,discard=unmap"
+               -device "virtio-blk-pci,drive=root,bootindex=0"
+               -drive "file=$STATE_DIR/docker.qcow2,if=none,id=dockerd,format=qcow2"
+               -device "virtio-blk-pci,drive=dockerd,serial=docker,bootindex=9"
+               -fw_cfg "name=opt/org.flatcar-linux/config,file=$CFG")
+    [[ "${RIG_BOOTSTRAP_CARRIER:-}" == iso && -s "$BASE_DIR/rig-bootstrap.iso" ]]       && DISK_ARGS+=(-drive "file=$BASE_DIR/rig-bootstrap.iso,media=cdrom,format=raw,readonly=on")
+else
+    IID="$(seed.sh "$RUN_DIR/seed")"; log "seed: instance-id $IID"
+    DISK_ARGS=(-drive "file=$STATE_DIR/disk.qcow2,if=virtio,format=qcow2,cache=writeback,discard=unmap"
+               -drive "file=$RUN_DIR/seed/seed.iso,media=cdrom,format=raw,readonly=on")
+fi
 
 TPM_ARGS=()
 if [[ "${TPM:-0}" == 1 ]]; then
@@ -38,8 +52,7 @@ qemu-system-x86_64 -enable-kvm -machine q35,accel=kvm -cpu host -smp "${VCPUS:-2
   -serial "file:$QDIR/log/$NODE.console" \
   -serial "unix:$RUN_DIR/ttyS1.sock,server=on,wait=off" \
   -qmp "unix:$RUN_DIR/qmp.sock,server=on,wait=off" \
-  -drive "file=$STATE_DIR/disk.qcow2,if=virtio,format=qcow2,cache=writeback,discard=unmap" \
-  -drive "file=$RUN_DIR/seed/seed.iso,media=cdrom,format=raw,readonly=on" \
+  "${DISK_ARGS[@]}" \
   -netdev "tap,id=net0,ifname=tap-cw-$NODE,script=no,downscript=no" \
   -device "virtio-net-pci,netdev=net0,mac=$NODE_MAC" \
   -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0 \
@@ -50,7 +63,7 @@ qmp() { printf '{"execute":"qmp_capabilities"}\n{"execute":"%s"}\n' "$1" | socat
 shutdown_vm() {
     log "stop: ACPI powerdown"; qmp system_powerdown
     for _ in $(seq 1 20); do kill -0 "$QPID" 2>/dev/null || return 0; sleep 1; done
-    vm-ssh 'doas poweroff' >/dev/null 2>&1 || true
+    vm-ssh "$GUEST_SUDO poweroff" >/dev/null 2>&1 || true
     for _ in $(seq 1 70); do kill -0 "$QPID" 2>/dev/null || return 0; sleep 1; done
     qmp quit; sleep 2; kill -9 "$QPID" 2>/dev/null || true
 }

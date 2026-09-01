@@ -20,7 +20,7 @@ RAM_MB="${RAM_MB:-2048}"; VCPUS="${VCPUS:-2}"
   Linux : enable VT-x/AMD-V in firmware; the compose file passes --device /dev/kvm.
   WSL2  : %UserProfile%\\.wslconfig -> [wsl2] nestedVirtualization=true, then 'wsl --shutdown' and restart Docker Desktop."
 [[ -e /dev/net/tun ]] || die "/dev/net/tun missing (needs devices: /dev/net/tun + cap NET_ADMIN)"
-[[ -s "$BASE_DIR/current.qcow2" ]] || die "base image missing — rig-init did not run"
+[[ -s "$(base_image)" ]] || die "base image missing ($(base_image)) — rig-init did not run"
 [[ -s "$AUTH_DIR/docker-config.json" && -s "$SSH_DIR/id_lab" ]] || die "rig-init outputs missing"
 
 # ---- network: container becomes an L2 switch; the guest owns the docker IP ----
@@ -66,13 +66,30 @@ log "net: guest routed via aux $AUX_IP (masquerade off-subnet only)"
 
 # ---- disk: overlay on the shared base (generation-pinned path) ----
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm"; rm -f "$STATE_DIR/share/ready"
-BASE="$(readlink -f "$BASE_DIR/current.qcow2")"
+BASE="$(readlink -f "$(base_image)")"
 if [[ ! -s "$STATE_DIR/disk.qcow2" ]]; then
     qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$STATE_DIR/disk.qcow2" "${DISK_SIZE:-16G}"; log "disk: new overlay on $(basename "$BASE")"
 fi
 
-# ---- seed ----
-IID="$(seed.sh "$RUN_DIR/seed")"; log "seed: instance-id $IID"
+# ---- provisioning config + boot media (per guest OS) ----
+# alpine: NoCloud seed ISO, single virtio disk (if=virtio shorthand — unchanged).
+# flatcar: Ignition via fw_cfg (prod template + rig overlay, see ignite.sh), explicit
+# root disk with bootindex=0 (SeaBIOS otherwise boots the blank docker disk), a
+# second qcow2 for /var/lib/docker (label docker, survives reprovision/base swaps).
+if [[ "$RIG_OS" == flatcar && "$ROLE" != kit ]]; then
+    [[ -s "$STATE_DIR/docker.qcow2" ]] || { qemu-img create -q -f qcow2 "$STATE_DIR/docker.qcow2" "${DOCKER_DISK_SIZE:-20G}"; log "disk: new docker volume"; }
+    CFG="$(ignite.sh "$RUN_DIR/ignition")"; log "ignition: $CFG"
+    DISK_ARGS=(-drive "file=$STATE_DIR/disk.qcow2,if=none,id=root,format=qcow2,cache=writeback,discard=unmap"
+               -device "virtio-blk-pci,drive=root,bootindex=0"
+               -drive "file=$STATE_DIR/docker.qcow2,if=none,id=dockerd,format=qcow2"
+               -device "virtio-blk-pci,drive=dockerd,serial=docker,bootindex=9"
+               -fw_cfg "name=opt/org.flatcar-linux/config,file=$CFG")
+    [[ "${RIG_BOOTSTRAP_CARRIER:-}" == iso && -s "$BASE_DIR/rig-bootstrap.iso" ]]       && DISK_ARGS+=(-drive "file=$BASE_DIR/rig-bootstrap.iso,media=cdrom,format=raw,readonly=on")
+else
+    IID="$(seed.sh "$RUN_DIR/seed")"; log "seed: instance-id $IID"
+    DISK_ARGS=(-drive "file=$STATE_DIR/disk.qcow2,if=virtio,format=qcow2,cache=writeback,discard=unmap"
+               -drive "file=$RUN_DIR/seed/seed.iso,media=cdrom,format=raw,readonly=on")
+fi
 
 # ---- TPM (kits) ----
 TPM_ARGS=()
@@ -101,8 +118,7 @@ qemu-system-x86_64 -enable-kvm -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m
   -chardev stdio,id=con0,signal=off -serial chardev:con0 \
   -serial unix:$RUN_DIR/ttyS1.sock,server=on,wait=off \
   -qmp unix:$RUN_DIR/qmp.sock,server=on,wait=off \
-  -drive file="$STATE_DIR/disk.qcow2",if=virtio,format=qcow2,cache=writeback,discard=unmap \
-  -drive file=$RUN_DIR/seed/seed.iso,media=cdrom,format=raw,readonly=on \
+  "${DISK_ARGS[@]}" \
   -netdev tap,id=net0,ifname=tap0,script=no,downscript=no \
   -device virtio-net-pci,netdev=net0,mac="$NODE_MAC" \
   -object rng-random,id=rng0,filename=/dev/urandom -device virtio-rng-pci,rng=rng0 \
@@ -113,7 +129,7 @@ qmp() { printf '{"execute":"qmp_capabilities"}\n{"execute":"%s"}\n' "$1" | socat
 shutdown_vm() {
     log "stop: ACPI powerdown"; qmp system_powerdown
     for _ in $(seq 1 20); do kill -0 "$QPID" 2>/dev/null || return 0; sleep 1; done
-    log "stop: guest still up, ssh poweroff"; vm-ssh 'doas poweroff' >/dev/null 2>&1 || true
+    log "stop: guest still up, ssh poweroff"; vm-ssh "$GUEST_SUDO poweroff" >/dev/null 2>&1 || true
     for _ in $(seq 1 70); do kill -0 "$QPID" 2>/dev/null || return 0; sleep 1; done
     log "stop: forcing quit"; qmp quit; sleep 2; kill -9 "$QPID" 2>/dev/null || true
 }

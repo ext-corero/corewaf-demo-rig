@@ -18,6 +18,8 @@ x-node: &node
   env_file: [inventory.env, images.env]
   environment:
     RIG_MODE: ${RIG_MODE:-pull}
+    RIG_OS: ${RIG_OS:-alpine}
+    RIG_BOOTSTRAP_CARRIER: ${RIG_BOOTSTRAP_CARRIER:-}
   volumes:
     - rig-base:/rig/base:ro
     - rig-ca:/rig/ca:ro
@@ -42,6 +44,7 @@ services:
     restart: "no"
     env_file: [inventory.env, images.env]
     environment:
+      RIG_OS: ${RIG_OS:-alpine}
       AWS_PROFILE: ${AWS_PROFILE:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}

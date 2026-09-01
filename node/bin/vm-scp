@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 # vm-scp <local> <remote-path> — copy a file into this node's guest.
 source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
-exec scp -q "${SSH_OPTS[@]}" "$1" "alpine@${NODE_IP:?}:$2"
+exec scp -q "${SSH_OPTS[@]}" "$1" "$GUEST_USER@${NODE_IP:?}:$2"

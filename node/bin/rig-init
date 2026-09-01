@@ -48,6 +48,29 @@ else
 fi
 ln -sfn "$(basename "$IMG")" "$BASE_DIR/current.qcow2"
 
+# ---- flatcar OS image (RIG_OS=flatcar; multi-cloud model: OS images come from OCI) ----
+if [[ "${RIG_OS:-alpine}" == flatcar ]]; then
+    [[ -n "${RIG_FLATCAR_REF:-}" ]] || die "RIG_OS=flatcar but RIG_FLATCAR_REF is not pinned in images.env"
+    FGEN="${RIG_FLATCAR_REF##*:}"; FIMG="$BASE_DIR/corewaf-rig-flatcar-${FGEN}.qcow2"
+    if [[ -s "$FIMG" ]] && { [[ -z "${RIG_FLATCAR_SHA256:-}" ]] || echo "$RIG_FLATCAR_SHA256  $FIMG" | sha256sum -c --quiet - 2>/dev/null; }; then
+        log "flatcar: $FIMG present (sha ok)"
+    else
+        log "flatcar: pulling $RIG_FLATCAR_REF"
+        printf '%s' "$TOKEN" | oras login --username AWS --password-stdin "$(reg_host)" >/dev/null
+        tmp2="$(mktemp -d "$BASE_DIR/.fetch.XXXX")"
+        for attempt in 1 2 3 4 5; do
+            ( cd "$tmp2" && rm -f ./*.qcow2 && oras pull "$RIG_FLATCAR_REF" >/dev/null ) && break
+            [[ $attempt -lt 5 ]] || die "flatcar image pull failed after $attempt attempts (network/DNS to ECR + S3?)"
+            log "flatcar: pull attempt $attempt failed — retrying in $((attempt*10))s"; sleep $((attempt*10))
+        done
+        f="$(ls "$tmp2"/*.qcow2)"; got="$(sha256sum "$f" | cut -d' ' -f1)"
+        [[ -z "${RIG_FLATCAR_SHA256:-}" || "$got" == "$RIG_FLATCAR_SHA256" ]] || die "flatcar image sha256 mismatch: got $got want $RIG_FLATCAR_SHA256"
+        mv -f "$f" "$FIMG"; echo "$got  $(basename "$FIMG")" > "$FIMG.sha256"; rm -rf "$tmp2"; log "flatcar: fetched (sha256 $got)"
+    fi
+    ln -sfn "$(basename "$FIMG")" "$BASE_DIR/current-flatcar.qcow2"
+    [[ "${RIG_BOOTSTRAP_CARRIER:-}" == iso && ! -s "$BASE_DIR/rig-bootstrap.iso" ]]       && log "NOTE: RIG_BOOTSTRAP_CARRIER=iso but $BASE_DIR/rig-bootstrap.iso is missing — build it with scripts/build-bootstrap-iso.sh"
+fi
+
 # ---- CA ----
 if [[ ! -s "$CA_DIR/root_ca.crt" || ! -s "$CA_DIR/root_ca_key" ]]; then
     log "ca: generating rig root CA"
