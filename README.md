@@ -83,10 +83,16 @@ and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
    ports only if the defaults (28080/23000) collide on your machine.
 7. **Run**: press **Up** and wait (first boot ≈ 10 minutes — the VMs pull their
    images). Chips turn green as nodes come up; then **Open GUI**.
+
+   ![Corero WAAP Demo Rig extension — main window](images/plugin-main.png)
 8. **Demo**: **+ Add kit** → *Automated* enrols a WAAP kit end-to-end; *Manual demo*
    stages a kit and hands you the token + the exact in-VM commands a customer would
-   run (terminal = click any node chip → Docker Desktop's Exec tab). The **?** button
-   holds the full in-app guide; **Refresh kits** revives kits that show stale.
+   run (terminal = click any node chip → Docker Desktop's Exec tab, shown below —
+   the shell greets you with the node's status and the `vm-ssh`/`console` hints).
+   The **?** button holds the full in-app guide; **Refresh kits** revives kits that
+   show stale.
+
+   ![Node terminal — Docker Desktop Exec tab with the rig motd](images/exec-terminal.png)
 
 ## Model 2 — Docker on Linux
 
