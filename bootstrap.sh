@@ -56,7 +56,7 @@ step "Host ports"
 port_free() { ! (command -v ss >/dev/null && ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$1\$"); }
 pick_port() { local want="$1" p="$1"; while ! port_free "$p"; do p=$((p+1)); done; echo "$p"; }
 touch .env
-for spec in RIG_HTTP_PORT:28080 RIG_GRAFANA_PORT:23000 RIG_STEPCA_PORT:29000; do
+for spec in RIG_HTTP_PORT:28080 RIG_GRAFANA_PORT:23000 RIG_STEPCA_PORT:29000 RIG_BACKSTAGE_PORT:27007; do
     var="${spec%%:*}"; def="${spec##*:}"; cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-${cur:-$def}}"
     got="$(pick_port "$want")"
     sed -i "/^$var=/d" .env; echo "$var=$got" >> .env

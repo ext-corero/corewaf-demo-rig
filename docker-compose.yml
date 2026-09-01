@@ -203,6 +203,17 @@ services:
         ipv4_address: ${RIG_KIT_B_IP:-192.168.150.202}
     volumes: [rig-base:/rig/base:ro, rig-ca:/rig/ca:ro, rig-shared-secrets:/rig/shared-secrets, rig-auth:/rig/auth:ro, rig-ssh:/rig/ssh:ro, .:/rig/v2:ro, ./kit-shim:/rig/kit-shim:ro, rig-node-kit-b:/state]
 
+  # Backstage developer portal — deliberately a PLAIN container (no VM): it is
+  # the worked example of a component where product parity does not need the
+  # VM treatment. On-demand via the `portal` profile (extension button /
+  # `rig-launcher portal`). Image twin pushed by the workspace backstage CI.
+  backstage:
+    image: ${RIG_REGISTRY:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr}/corewaf/backstage:${BACKSTAGE_TAG:-latest}
+    container_name: rig-backstage
+    profiles: [portal]
+    restart: unless-stopped
+    ports: ["${RIG_BACKSTAGE_PORT:-27007}:7007"]
+
   cli:
     image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-4d61531}
     build: ./node

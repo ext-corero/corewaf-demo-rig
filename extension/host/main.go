@@ -24,7 +24,7 @@ import (
 )
 
 // KEY=VAL args the UI may pass through to the launcher container as env.
-var envArgRe = regexp.MustCompile(`^(RIG_HTTP_PORT|RIG_GRAFANA_PORT|RIG_STEPCA_PORT|TENANT)=[A-Za-z0-9._-]*$`)
+var envArgRe = regexp.MustCompile(`^(RIG_HTTP_PORT|RIG_GRAFANA_PORT|RIG_STEPCA_PORT|RIG_BACKSTAGE_PORT|TENANT)=[A-Za-z0-9._-]*$`)
 
 func home() string {
 	if u, err := user.Current(); err == nil && u.HomeDir != "" {

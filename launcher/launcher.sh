@@ -8,6 +8,7 @@
 #   exec NODE CTR CMD...                         run a command in a container inside a guest
 #   kit NAME  boot + stage + mint + enrol a kit, fully automatic (demo|a|b)
 #   stage NAME  boot + stage + mint but do NOT enrol — manual in-VM demo (prints TOKEN=...)
+#   portal    Backstage developer portal (plain container) on :27007
 #   refresh-kits  recreate the kit node containers (fixes kits gone stale; enrolments persist)
 #   stop | down | reset                          console NODE (VM serial log)   url   browser URLs
 #   shell     bash in the launcher with the checkout mounted (debug)
@@ -47,7 +48,7 @@ if [[ "${RIG_LAUNCHER_INNER:-0}" != 1 ]]; then
     TTY=""; [[ -t 0 && -t 1 ]] && TTY="-it"
     exec docker run --rm $TTY -v /var/run/docker.sock:/var/run/docker.sock -v "$VOL:$DIR" \
         -e RIG_LAUNCHER_INNER=1 -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
-        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e COREWAF_RIG_REF -e TENANT -e LAUNCHER_IMAGE="$IMG" \
+        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e LAUNCHER_IMAGE="$IMG" \
         "$IMG" "$cmd" "$@"
 fi
 ensure_repo() {
@@ -84,7 +85,7 @@ pick_ports() {
     ports="$(docker run --rm --net host alpine:3.23 sh -c 'netstat -ltn 2>/dev/null | awk "{print \$4}" | sed "s/.*://" | sort -u' 2>/dev/null || true)"
     ours="$(docker ps --filter name=rig- --format '{{.Ports}}' | grep -oE ':[0-9]+->' | tr -d ':>-' | sort -u || true)"
     ports="$(comm -23 <(echo "$ports" | sort -u) <(echo "$ours" | sort -u))"
-    for spec in RIG_HTTP_PORT:28080 RIG_GRAFANA_PORT:23000 RIG_STEPCA_PORT:29000; do
+    for spec in RIG_HTTP_PORT:28080 RIG_GRAFANA_PORT:23000 RIG_STEPCA_PORT:29000 RIG_BACKSTAGE_PORT:27007; do
         local var="${spec%%:*}" def="${spec##*:}" cur want p
         # preference: explicit env override > the default port > whatever a previous run recorded
         cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-$def}"; p="$want"
@@ -137,6 +138,10 @@ case "$cmd" in
           echo "  terminal:  docker exec -it rig-$SVC vm-ssh          (or: docker exec -it rig-$SVC console — login alpine/alpine)"
           echo "  in the VM: NO_UP=1 TOKEN=<token> bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-starter-kit/main/bootstrap.sh)"
           echo "             corewaf-demo-up" ;;
+  portal) ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+          step "Backstage portal (plain container, port ${RIG_BACKSTAGE_PORT:-27007})"
+          compose --profile portal up -d backstage
+          echo "Backstage: http://localhost:${RIG_BACKSTAGE_PORT:-27007}" ;;
   refresh-kits) ensure_repo; aws_env; registry_login; set -a; . .env; set +a
           step "refresh kits — recreate kit node containers (fresh network endpoints; VM disks, identities and enrolments persist)"
           KITS="$(docker ps -a --filter name=rig-kit- --format '{{.Names}}' | sed 's/^rig-//' | tr '\n' ' ')"
