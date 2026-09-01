@@ -31,10 +31,10 @@ export default function AddKitDialog({ open, kitStates, busy, onClose, onStart }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add a WAF kit</DialogTitle>
+      <DialogTitle>Add a WAAP kit</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          A kit is a customer-edge WAF VM with its own disk and TPM-backed identity. Pick a slot and
+          A kit is a customer-edge WAAP VM with its own disk and TPM-backed identity. Pick a slot and
           how to enrol it.
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
@@ -51,7 +51,7 @@ export default function AddKitDialog({ open, kitStates, busy, onClose, onStart }
         </Stack>
         <Stack direction="row" spacing={1.5}>
           <ModeCard m="auto" title="Automated enrolment"
-            body="Boots the kit VM, stages it, mints a provisioning token and enrols the WAF instance — all in one go (~3–5 min). Progress streams to the output panel; the instance then appears in the GUI." />
+            body="Boots the kit VM, stages it, mints a provisioning token and enrols the WAAP instance — all in one go (~3–5 min). Progress streams to the output panel; the instance then appears in the GUI." />
           <ModeCard m="manual" title="Manual demo (in-VM)"
             body="Boots + stages the kit and mints a token, but does NOT enrol. You then run the enrolment inside the VM — the exact customer experience. The next screen shows the token and every command, plus an embedded terminal." />
         </Stack>

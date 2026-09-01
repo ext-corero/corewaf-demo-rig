@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# CoreWAF demo rig — curl-pipe bootstrap (v0.2: the rig is a set of containers, each
+# Corero WAAP demo rig — curl-pipe bootstrap (v0.2: the rig is a set of containers, each
 # running one VM under QEMU/KVM).
 #
 #   AWS_PROFILE=corewaf-ecr bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/bootstrap.sh)
 #
 # Needs on the host: Docker (Engine on Linux, or Docker Desktop on Windows with the
-# WSL2 backend + nested virtualization), git, and an AWS credential for the CoreWAF
+# WSL2 backend + nested virtualization), git, and an AWS credential for the Corero WAAP
 # registry (IAM user in group corewaf-ecr-pull) as AWS_PROFILE or AWS_ACCESS_KEY_ID/
 # AWS_SECRET_ACCESS_KEY. No sudo, no packages, nothing built locally.
 #   COREWAF_RIG_DIR / COREWAF_RIG_REF / NO_UP=1 as before.
@@ -16,7 +16,7 @@ REGISTRY_HOST="123517950721.dkr.ecr.us-east-1.amazonaws.com"; REGION="us-east-1"
 step() { printf '\n── %s ──\n' "$*"; }; ok() { printf '  \e[32m✓\e[0m %s\n' "$*"; }; warn() { printf '  \e[33m!\e[0m %s\n' "$*"; }
 fail() { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }
 
-step "CoreWAF demo rig — bootstrap"
+step "Corero WAAP demo rig — bootstrap"
 for c in git docker; do command -v "$c" >/dev/null 2>&1 || fail "$c is required"; done
 docker compose version >/dev/null 2>&1 || fail "docker compose (v2) is required"
 ok "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?') / $(docker compose version --short)"
@@ -39,7 +39,7 @@ if TOKEN="$(docker run --rm "${AWS_ARGS[@]}" public.ecr.aws/aws-cli/aws-cli ecr 
 else
     cat >&2 <<MSG
 ERROR: no usable AWS credential (or not in IAM group corewaf-ecr-pull).
-  Ask the CoreWAF operators for an access key, then:
+  Ask the Corero WAAP operators for an access key, then:
     aws configure --profile corewaf-ecr      # region ${REGION}   (or export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)
     export AWS_PROFILE=corewaf-ecr
 MSG

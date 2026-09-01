@@ -10,7 +10,7 @@ if [ -t 0 ] && [ -z "${RIG_BANNER_SHOWN:-}" ]; then
     [ -n "${NODE_NAME:-}" ] || NODE_NAME=$(eval printf '%s' "\"\${${NODE_KEY}_NAME:-}\"")
     [ -n "${NODE_IP:-}" ]   || NODE_IP=$(eval printf '%s' "\"\${${NODE_KEY}_IP:-}\"")
   fi
-  printf '\n\033[1m── CoreWAF rig · %s ──\033[0m  (this shell is the HYPERVISOR container, not the VM)\n' "${NODE_NAME:-node}"
+  printf '\n\033[1m── Corero WAAP rig · %s ──\033[0m  (this shell is the HYPERVISOR container, not the VM)\n' "${NODE_NAME:-node}"
   printf '   guest %s  role %s\n' "${NODE_IP:-?}" "${ROLE:-?}"
   if timeout 3 nc -z -w2 "${NODE_IP:-127.0.0.1}" 22 >/dev/null 2>&1; then
     printf '   \033[32m✓\033[0m guest ssh reachable'

@@ -16,7 +16,7 @@ export default function HelpDialog({ open, onClose, onOpenReadme }: {
 }) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth scroll="paper">
-      <DialogTitle>CoreWAF Demo Rig — how to use this extension</DialogTitle>
+      <DialogTitle>Corero WAAP Demo Rig — how to use this extension</DialogTitle>
       <DialogContent dividers>
         <Typography variant="body2" color="text.secondary">
           The rig is six VMs (QEMU/KVM inside containers) — control plane, two DNS bridges, two
@@ -28,7 +28,7 @@ export default function HelpDialog({ open, onClose, onOpenReadme }: {
           <ul style={{ margin: '4px 0 0 18px' }}>
             <li>KVM available to containers. Windows: <C>%UserProfile%\.wslconfig</C> needs{' '}
               <C>nestedVirtualization=true</C> (and ≈24 GB memory), then <C>wsl --shutdown</C>.</li>
-            <li>An AWS profile with the CoreWAF registry pull policy (ask your operator), configured
+            <li>An AWS profile with the Corero WAAP registry pull policy (ask your operator), configured
               once on the host: <C>aws configure --profile &lt;name&gt;</C> — set that name in the
               "AWS profile" field above.</li>
           </ul>
@@ -41,7 +41,7 @@ export default function HelpDialog({ open, onClose, onOpenReadme }: {
         </S>
 
         <S t="Adding a kit (+ Add kit)">
-          A kit is a customer-edge WAF VM (own disk, TPM-backed identity). Two modes:
+          A kit is a customer-edge WAAP VM (own disk, TPM-backed identity). Two modes:
           <ul style={{ margin: '4px 0 0 18px' }}>
             <li><b>Automated</b> — boots, stages, mints a provisioning token and enrols in one go
               (~3–5 min). Best for quickly populating the fleet.</li>

@@ -1,4 +1,4 @@
-// CoreWAF Demo Rig — Docker Desktop extension UI.
+// Corero WAAP Demo Rig — Docker Desktop extension UI.
 //
 // A thin front end over the rig-launcher container: every button runs the
 // bundled host helper `corewaf-rig <profile> <image> <verb>`, which is the
@@ -142,7 +142,7 @@ export default function App() {
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, height: '100vh', boxSizing: 'border-box' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Box>
-          <Typography variant="h3">CoreWAF Demo Rig</Typography>
+          <Typography variant="h3">Corero WAAP Demo Rig</Typography>
           <Typography variant="body2" color="text.secondary">
             Six VMs (QEMU/KVM in containers) + demo kits, driven by the rig-launcher. Needs /dev/kvm (Windows: WSL2 nested virtualization) and an AWS pull profile.
           </Typography>
@@ -174,7 +174,7 @@ export default function App() {
         <Tooltip title="Full health checklist, run inside the rig network"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('verify')}>Verify</Button>
         </span></Tooltip>
-        <Tooltip title="Add a WAF kit — automated enrolment, or staged for a manual in-VM demo"><span>
+        <Tooltip title="Add a WAAP kit — automated enrolment, or staged for a manual in-VM demo"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>
         </span></Tooltip>
         <Tooltip title="Recreate the kit containers with fresh network endpoints — fixes kits gone stale (Docker Desktop endpoint aging). Identities and enrolments persist; tunnels reconnect in ~1 min."><span>

@@ -2,7 +2,7 @@
   "icon": "icon.svg",
   "ui": {
     "dashboard-tab": {
-      "title": "CoreWAF Demo Rig",
+      "title": "Corero WAAP Demo Rig",
       "root": "/ui",
       "src": "index.html"
     }
