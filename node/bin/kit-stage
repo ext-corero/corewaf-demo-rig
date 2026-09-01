@@ -31,7 +31,7 @@ else
     fi
 fi
 log "pulling kit images from the registry inside the guest (re-tagged for the public compose)"
-reg_kit_pull_script > /run/kit-pull.sh; vm-scp /run/kit-pull.sh /tmp/kit-pull.sh; vm-ssh 'sudo sh /tmp/kit-pull.sh'
+reg_kit_pull_script > "$RUN_DIR/kit-pull.sh"; vm-scp "$RUN_DIR/kit-pull.sh" /tmp/kit-pull.sh; vm-ssh 'sudo sh /tmp/kit-pull.sh'
 log "demo helper + console login"
 vm-ssh "echo alpine:alpine | sudo chpasswd; sudo mkdir -p /opt/kit-demo && sudo cp /opt/kit-root.crt /opt/kit-demo/operator-ca.crt && sudo tee /opt/kit-demo/docker-compose.override.yml >/dev/null <<'EOF2'
 # rig demo override — TPM PKCS#11 wiring for the swtpm-backed kit VM.

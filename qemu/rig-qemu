@@ -18,7 +18,7 @@ source "$HERE/qemu/env.sh"
 source "$RIG_LIB"
 INFRA=(RIG_APP RIG_DNS_1 RIG_DNS_2 RIG_GW_1 RIG_GW_2 RIG_OBS_1)
 nkey() { case "$1" in app-1) echo RIG_APP;; dns-1) echo RIG_DNS_1;; dns-2) echo RIG_DNS_2;; gw-1) echo RIG_GW_1;; gw-2) echo RIG_GW_2;; obs-1) echo RIG_OBS_1;; kit-demo) echo RIG_KIT_DEMO;; kit-a) echo RIG_KIT_A;; kit-b) echo RIG_KIT_B;; *) die "unknown node $1";; esac; }
-nname() { local k; k=$(nkey "$1"); local n; n=$(eval echo "\${${k}_NAME}"); echo "${n#rig2-}"; }
+nname() { local k; k=$(nkey "$1"); local n; n=$(eval echo "\${${k}_NAME}"); n="${n#rig2-}"; echo "${n#rig-}"; }
 pid_of() { local p="$QDIR/run/$1/qemu.pid"; [[ -f $p ]] && kill -0 "$(cat "$p")" 2>/dev/null && cat "$p" || true; }
 role_env() { # export ROLE/RAM_MB/VCPUS/TPM for a NODE_KEY
     case "$1" in
@@ -30,7 +30,7 @@ role_env() { # export ROLE/RAM_MB/VCPUS/TPM for a NODE_KEY
     esac
 }
 launch() { # NODE_KEY
-    local key="$1" node; node=$(eval echo "\${${key}_NAME}"); node="${node#rig2-}"
+    local key="$1" node; node=$(eval echo "\${${key}_NAME}"); node="${node#rig2-}"; node="${node#rig-}"
     [[ -n "$(pid_of "$node")" ]] && { echo "  $node already running"; return 0; }
     role_env "$key"
     ( setsid env NODE_KEY="$key" ROLE="$ROLE" RAM_MB="$RAM_MB" VCPUS="$VCPUS" TPM="$TPM" \

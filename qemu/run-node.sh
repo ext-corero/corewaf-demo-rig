@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export NODE_KEY="${1:?NODE_KEY (RIG_APP, RIG_DNS_1, ...)}"
 source "$HERE/qemu/env.sh"
 source "$RIG_LIB"
-NODE="${NODE_NAME#rig2-}"
+NODE="${NODE_NAME#rig2-}"; NODE="${NODE#rig-}"   # rig2-app-1 -> app-1, rig-kit-a -> kit-a
 export STATE_DIR="$QDIR/state/$NODE" RUN_DIR="$QDIR/run/$NODE"
 mkdir -p "$STATE_DIR/share" "$STATE_DIR/tpm" "$RUN_DIR"
 rm -f "$STATE_DIR/share/ready"
@@ -59,6 +59,10 @@ trap 'shutdown_vm; exit 0' TERM INT
 ( for _ in $(seq 1 150); do kill -0 "$QPID" 2>/dev/null || { log "qemu exited during boot — see this log above"; exit 1; }; nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1 && break; sleep 2; done
   if nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1; then
       log "guest up (ssh)"
+      if [[ "$ROLE" == gw || "$ROLE" == obs ]]; then
+          for _ in $(seq 1 120); do [[ -f "$SECRETS_DIR/tunnel-gw/root.crt" ]] && break; sleep 5; done
+          [[ -f "$SECRETS_DIR/tunnel-gw/root.crt" ]] || log "warning: app-1 never published tunnel-gw secrets; starting anyway"
+      fi
       if [[ "$ROLE" != kit ]]; then
           if vm-stack; then touch "$STATE_DIR/share/ready"; log "stack: up"; else log "stack: FAILED (rerun: qemu/rig-qemu stack $NODE)"; fi
       else touch "$STATE_DIR/share/ready"; fi
