@@ -208,7 +208,7 @@ services:
   # VM treatment. On-demand via the `portal` profile (extension button /
   # `rig-launcher portal`). Image twin pushed by the workspace backstage CI.
   backstage:
-    image: ${RIG_REGISTRY:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr}/corewaf/backstage:${BACKSTAGE_TAG:-latest}
+    image: ${RIG_REGISTRY:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr}/ext-corero/backstage:${BACKSTAGE_TAG:-latest}
     container_name: rig-backstage
     profiles: [portal]
     restart: unless-stopped
