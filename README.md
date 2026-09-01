@@ -68,7 +68,10 @@ and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
 3. **Allow non-Marketplace extensions**: Docker Desktop → *Settings → Extensions* →
    untick *"Allow only extensions distributed through the Docker Marketplace"* →
    Apply & restart. (<https://docs.docker.com/extensions/settings-feedback/>)
-4. **Install the extension** (PowerShell):
+4. **Install the extension** — PowerShell or `cmd`, both work, **no administrator
+   rights needed** (installing Docker Desktop in step 1 is the only admin step; your
+   user just needs to be able to run Docker Desktop, i.e. be in the `docker-users`
+   group, which the Docker Desktop installer sets up):
    ```powershell
    docker extension install ghcr.io/ext-corero/corewaf-demo-rig/extension:stable
    ```
