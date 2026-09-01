@@ -56,8 +56,13 @@ ensure_repo() {
         # full refspec: a bare `fetch origin <branch>` does not create the local ref,
         # so switching channels (main <-> stable) in an existing volume would fail.
         git -C "$DIR" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' --tags 2>/dev/null || true
-        git -C "$DIR" checkout -q "$REF" 2>/dev/null || git -C "$DIR" checkout -q -B "$REF" "origin/$REF"
-        git -C "$DIR" pull -q --ff-only origin "$REF" 2>/dev/null || true   # detached tag: no pull
+        # track the remote exactly: channel branches (stable) may be force-moved
+        # by a release, so ff-pulls are not enough; tags check out detached.
+        if git -C "$DIR" rev-parse -q --verify "origin/$REF" >/dev/null 2>&1; then
+            git -C "$DIR" checkout -q -B "$REF" "origin/$REF"
+        else
+            git -C "$DIR" checkout -q "$REF"
+        fi
         ok "rig checkout refreshed ($REF)"
     else git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "rig cloned into volume $VOL ($REF)"; fi
     cd "$DIR"
