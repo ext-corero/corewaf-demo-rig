@@ -193,18 +193,22 @@ export default function App() {
       {busy && <Alert severity="info">Running <b>{busy}</b>… output below.</Alert>}
 
       <Divider />
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-        <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
-        <Typography variant="caption" color="text.secondary">— click a node to open its terminal (Exec tab, then <code>vm-ssh</code>)</Typography>
-        {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
-        {rows.map((r) => (
-          <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: container view (Exec tab = terminal; then vm-ssh)`}>
-            <Chip label={`❯ ${r.name.replace(/^rig-/, '')}`} clickable color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
-              sx={{ '& .MuiChip-label': { fontFamily: 'inherit' }, cursor: 'pointer' }}
-              onClick={() => openContainer(r.name)} />
-          </Tooltip>
-        ))}
-      </Stack>
+      <Box>
+        <Stack direction="row" spacing={1} alignItems="baseline">
+          <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
+          <Typography variant="caption" color="text.secondary">— click a node to open its terminal (Exec tab, then <code>vm-ssh</code>)</Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
+          {rows.length === 0 && <Typography variant="body2" color="text.secondary">no rig containers — press Up</Typography>}
+          {rows.map((r) => (
+            <Tooltip key={r.name} title={`${r.image} · ${r.state}${r.ports.length ? ' · ' + r.ports.join(', ') : ''} — click: container view (Exec tab = terminal; then vm-ssh)`}>
+              <Chip label={`❯ ${r.name.replace(/^rig-/, '')}`} clickable color={healthColor(r.health)} variant={r.state === 'running' ? 'filled' : 'outlined'} size="small"
+                sx={{ '& .MuiChip-label': { fontFamily: 'inherit' }, cursor: 'pointer' }}
+                onClick={() => openContainer(r.name)} />
+            </Tooltip>
+          ))}
+        </Stack>
+      </Box>
 
       <Box component="pre" ref={logRef} sx={{
         flex: 1, minHeight: 200, m: 0, p: 1.5, overflow: 'auto', fontSize: 12, lineHeight: 1.4,
