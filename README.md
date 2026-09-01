@@ -85,6 +85,30 @@ and hardware virtualization (Intel VT-x / AMD-V) enabled in firmware.
    images). Chips turn green as nodes come up; then **Open GUI**.
 
    ![Corero WAAP Demo Rig extension — main window](images/plugin-main.png)
+
+   What each button does:
+
+   | button | action |
+   |---|---|
+   | **Up** | pull/refresh the launcher, log into the registry, boot (or update) all six VMs; safe to re-run anytime |
+   | **Verify** | the full health checklist (30+ checks: guests, stacks, endpoints, DNS plane, tunnels, instances) |
+   | **+ Add kit** | add a WAAP kit — *Automated* (one-click enrolment) or *Manual demo* (staged + token; you enrol inside the VM like a customer) |
+   | **Refresh kits** | recreate the kit containers with fresh network endpoints — see below |
+   | **Stop** | graceful shutdown of all VMs; disks kept, next Up boots the same VMs |
+   | **Down** | remove the containers; volumes (disks, CA, secrets) kept |
+   | **Reset** | wipe **everything** including kit identities — asks "Are you sure?"; next Up is a cold start |
+   | **Open GUI / Grafana** | open the console / dashboards in your browser (uses the port fields) |
+   | **?** | the in-app guide |
+   | *node chips* | click any VM to open its terminal (Docker Desktop's Exec tab; `vm-ssh` enters the VM) |
+
+   **Why "Refresh kits" exists**: pressing **Up** deliberately never touches the
+   kits (so a staged or enrolled kit survives every rig update) — but on long-running
+   Docker Desktop hosts a kit's network endpoint can go stale over time: the GUI
+   shows its heartbeat aging ("last seen" hours ago) and the tunnel stops passing
+   traffic. **Refresh kits** recreates the kit containers with fresh endpoints;
+   the VM disks, TPM identities and enrolments all persist, and the tunnels
+   reconnect on their own within about a minute. Any time you lose the connection
+   to a kit, this button is the way to reconnect it.
 8. **Demo**: **+ Add kit** → *Automated* enrols a WAAP kit end-to-end; *Manual demo*
    stages a kit and hands you the token + the exact in-VM commands a customer would
    run (terminal = click any node chip → Docker Desktop's Exec tab, shown below —
