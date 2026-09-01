@@ -16,6 +16,11 @@ RUN CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o /out/li
  && CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags="-s -w" -o /out/darwin/corewaf-rig . \
  && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o /out/windows/corewaf-rig.exe .
 
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS pty
+WORKDIR /src
+COPY vm/ .
+RUN go mod download && CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/corewaf-rig-pty .
+
 FROM alpine:3.23
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="CoreWAF Demo Rig" \
@@ -31,7 +36,8 @@ LABEL org.opencontainers.image.title="CoreWAF Demo Rig" \
       com.docker.extension.additional-urls='[{"title":"README","url":"https://github.com/ext-corero/corewaf-demo-rig#readme"}]' \
       com.docker.extension.changelog="See GitHub releases." \
       com.docker.extension.screenshots='[]'
-COPY metadata.json icon.svg /
+COPY metadata.json icon.svg compose.yaml /
+COPY --from=pty /out/corewaf-rig-pty /corewaf-rig-pty
 COPY --from=ui /ui/build /ui
 COPY --from=host /out/linux /linux
 COPY --from=host /out/darwin /darwin

@@ -8,9 +8,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createDockerDesktopClient } from '@docker/extension-api-client';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, FormControl, InputLabel, Link, MenuItem, Select, Stack, TextField,
-  Tooltip, Typography,
+  Divider, Link, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
+import HelpDialog from './HelpDialog';
+import AddKitDialog, { type KitMode } from './AddKitDialog';
+import DemoKitPanel from './DemoKitPanel';
+import TerminalDrawer from './TerminalDrawer';
+import type { PtyCmd } from './pty';
 
 const ddClient = createDockerDesktopClient();
 
@@ -37,7 +41,10 @@ function healthColor(h: string): 'success' | 'warning' | 'error' | 'default' {
 export default function App() {
   const [profile, setProfile] = useState(() => load('rig.profile', DEFAULT_PROFILE));
   const [image, setImage] = useState(() => load('rig.image', DEFAULT_IMAGE));
-  const [kit, setKit] = useState('demo');
+  const [addKitOpen, setAddKitOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [demoKit, setDemoKit] = useState<{ kit: string; token: string } | null>(null);
+  const [term, setTerm] = useState<{ kit: string; cmd: PtyCmd } | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -86,14 +93,25 @@ export default function App() {
   const grafanaPort = hostPort('obs-1', 3000);
   const appHealthy = rows.find((r) => r.name === 'rig-app-1')?.health === 'healthy';
   const infraUp = NODES.filter((n) => rows.find((r) => r.name === `rig-${n}`)?.health === 'healthy').length;
+  const kitStates = Object.fromEntries(
+    KITS.map((k) => [k, rows.find((r) => r.name === `rig-kit-${k}`)?.health || rows.find((r) => r.name === `rig-kit-${k}`)?.state || '']),
+  );
 
   const run = (verb: string, ...args: string[]) => {
     if (busy) return;
     setBusy(verb);
     setLog((l) => `${l}\n$ corewaf-rig ${verb} ${args.join(' ')}\n`);
+    let captured = '';
     ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...args], {
       stream: {
-        onOutput: (d) => setLog((l) => l + (d.stdout ?? '') + (d.stderr ?? '')),
+        onOutput: (d) => {
+          captured += d.stdout ?? '';
+          if (verb === 'stage') {
+            const m = captured.match(/^TOKEN=(\S+)/m);
+            if (m) setDemoKit({ kit: args[0] ?? 'demo', token: m[1] });
+          }
+          setLog((l) => l + (d.stdout ?? '') + (d.stderr ?? ''));
+        },
         onError: (e) => setLog((l) => `${l}\n[error] ${e}\n`),
         onClose: (code) => {
           setLog((l) => `${l}\n[${verb} exited ${code}]\n`);
@@ -116,13 +134,16 @@ export default function App() {
             Six VMs (QEMU/KVM in containers) + demo kits, driven by the rig-launcher. Needs /dev/kvm (Windows: WSL2 nested virtualization) and an AWS pull profile.
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
-          <Button variant="contained" disabled={!appHealthy || !guiPort} onClick={() => open(`http://gui-1.localhost:${guiPort}`)}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Button size="small" sx={{ height: 32 }} variant="contained" disabled={!appHealthy || !guiPort} onClick={() => open(`http://gui-1.localhost:${guiPort}`)}>
             Open GUI
           </Button>
-          <Button variant="outlined" disabled={!grafanaPort} onClick={() => open(`http://grafana.localhost:${grafanaPort}`)}>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!grafanaPort} onClick={() => open(`http://grafana.localhost:${grafanaPort}`)}>
             Grafana
           </Button>
+          <Tooltip title="How to use this extension"><span>
+            <Button size="small" sx={{ height: 32, minWidth: 36, fontWeight: 700 }} variant="outlined" onClick={() => setHelpOpen(true)} aria-label="help">?</Button>
+          </span></Tooltip>
         </Stack>
       </Stack>
 
@@ -131,31 +152,39 @@ export default function App() {
         <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
       </Stack>
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <Tooltip title="Pull the launcher, refresh the registry login, boot/refresh all six VMs (first boot ≈ 10 min)">
-          <span><Button variant="contained" disabled={!!busy} onClick={() => run('up')}>Up</Button></span>
-        </Tooltip>
-        <Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('verify')}>Verify</Button>
-        <FormControl size="small" sx={{ minWidth: 110 }}>
-          <InputLabel>Kit</InputLabel>
-          <Select label="Kit" value={kit} onChange={(e) => setKit(String(e.target.value))}>
-            {KITS.map((k) => <MenuItem key={k} value={k}>kit-{k}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <Tooltip title="Boot the kit VM, mint a token and enrol a WAF instance">
-          <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('kit', kit)}>Enrol kit</Button></span>
-        </Tooltip>
-        <Tooltip title="Containers running inside every guest VM">
-          <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('ps')}>Containers</Button></span>
-        </Tooltip>
-        <Tooltip title="Per-VM uptime, load, memory, disk">
-          <span><Button variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('stat')}>Stat</Button></span>
-        </Tooltip>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+        <Tooltip title="Pull the launcher, refresh the registry login, boot/refresh all six VMs (first boot ≈ 10 min)"><span>
+          <Button size="small" sx={{ height: 32 }} variant="contained" disabled={!!busy} onClick={() => run('up')}>Up</Button>
+        </span></Tooltip>
+        <Tooltip title="Full health checklist, run inside the rig network"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('verify')}>Verify</Button>
+        </span></Tooltip>
+        <Tooltip title="Add a WAF kit — automated enrolment, or staged for a manual in-VM demo"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>
+        </span></Tooltip>
+        <Tooltip title="Containers running inside every guest VM"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('ps')}>Containers</Button>
+        </span></Tooltip>
+        <Tooltip title="Per-VM uptime, load, memory, disk"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('stat')}>Stat</Button>
+        </span></Tooltip>
         <Box sx={{ flex: 1 }} />
-        <Button variant="outlined" disabled={!!busy} onClick={() => run('stop')}>Stop</Button>
-        <Button variant="outlined" color="warning" disabled={!!busy} onClick={() => setConfirm('down')}>Down</Button>
-        <Button variant="outlined" color="error" disabled={!!busy} onClick={() => setConfirm('reset')}>Reset</Button>
+        <Tooltip title="Graceful VM shutdown; disks kept"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy} onClick={() => run('stop')}>Stop</Button>
+        </span></Tooltip>
+        <Tooltip title="Remove the containers; volumes kept — next Up boots the same VMs"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" color="warning" disabled={!!busy} onClick={() => setConfirm('down')}>Down</Button>
+        </span></Tooltip>
+        <Tooltip title="Wipe EVERYTHING — VM disks, CA, secrets, kit identities"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" color="error" disabled={!!busy} onClick={() => setConfirm('reset')}>Reset</Button>
+        </span></Tooltip>
       </Stack>
+
+      {demoKit && (
+        <DemoKitPanel kit={demoKit.kit} token={demoKit.token}
+          onOpenTerminal={() => setTerm({ kit: demoKit.kit, cmd: 'vm-ssh' })}
+          onDismiss={() => setDemoKit(null)} />
+      )}
 
       {busy && <Alert severity="info">Running <b>{busy}</b>… output below.</Alert>}
 
@@ -183,7 +212,7 @@ export default function App() {
       </Typography>
 
       <Dialog open={!!confirm} onClose={() => setConfirm(null)}>
-        <DialogTitle>{confirm === 'reset' ? 'Reset the rig?' : 'Take the rig down?'}</DialogTitle>
+        <DialogTitle>{confirm === 'reset' ? 'Are you sure? This wipes the whole rig.' : 'Take the rig down?'}</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
             {confirm === 'reset'
@@ -194,10 +223,21 @@ export default function App() {
         <DialogActions>
           <Button onClick={() => setConfirm(null)}>Cancel</Button>
           <Button color={confirm === 'reset' ? 'error' : 'warning'} variant="contained" onClick={() => { const v = confirm!; setConfirm(null); run(v); }}>
-            {confirm === 'reset' ? 'Reset' : 'Down'}
+            {confirm === 'reset' ? 'Yes, reset everything' : 'Down'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)}
+        onOpenReadme={() => open('https://github.com/ext-corero/corewaf-demo-rig#readme')} />
+      <AddKitDialog open={addKitOpen} kitStates={kitStates} busy={!!busy}
+        onClose={() => setAddKitOpen(false)}
+        onStart={(slot: string, mode: KitMode) => {
+          setAddKitOpen(false);
+          setDemoKit(null);
+          run(mode === 'auto' ? 'kit' : 'stage', slot);
+        }} />
+      <TerminalDrawer target={term} onClose={() => setTerm(null)} />
     </Box>
   );
 }

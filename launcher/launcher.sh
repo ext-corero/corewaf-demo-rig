@@ -6,7 +6,8 @@
 #   ps | stat                                    containers / uptime+load+mem inside every guest
 #   logs NODE CTR [args]                         logs of a container inside a guest (--tail 50)
 #   exec NODE CTR CMD...                         run a command in a container inside a guest
-#   kit NAME  boot + stage + mint + enrol a kit (demo|a|b)
+#   kit NAME  boot + stage + mint + enrol a kit, fully automatic (demo|a|b)
+#   stage NAME  boot + stage + mint but do NOT enrol — manual in-VM demo (prints TOKEN=...)
 #   stop | down | reset                          console NODE (VM serial log)   url   browser URLs
 #   shell     bash in the launcher with the checkout mounted (debug)
 set -euo pipefail
@@ -101,11 +102,25 @@ case "$cmd" in
           [[ -n "$TOKEN" ]] || fail "could not mint a token"; ok "token minted"
           compose --profile kit exec -T "$SVC" kit-enrol "$TOKEN" || fail "enrolment failed — rig-launcher logs $SVC, or: docker exec rig-$SVC vm-ssh 'sudo docker logs corewaf-tunnel'"
           compose --profile tools run --rm -T cli rig verify 2>/dev/null | sed -n '/WG peers/,/summary/p' ;;
+  stage)  ensure_repo; aws_env; registry_login; set -a; . .env; set +a
+          NAME="${1:-demo}"; SVC="kit-$NAME"; step "stage $NAME (manual demo — staged + token, NOT enrolled)"
+          docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true
+          [[ "$(docker inspect -f '{{.State.Health.Status}}' rig-app-1 2>/dev/null)" == healthy ]] || fail "the rig is not up/healthy (run: rig-launcher up)"
+          compose --profile kit up -d "$SVC"; compose --profile kit exec -T "$SVC" kit-stage | grep -E '^\s+(dns|edge|tpm|img)|staged' || true
+          wait_api || fail "rig API not answering"
+          TOKEN="$(compose --profile tools run --rm -T cli rig mint "$SVC" "${TENANT:-}" 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
+          [[ -n "$TOKEN" || -n "${TENANT:-}" ]] || TOKEN="$(compose --profile tools run --rm -T cli rig mint "$SVC" corero-system-owner-tunnel-gateway 2>/dev/null | grep -E '^eyJ' | tail -1 || true)"
+          [[ -n "$TOKEN" ]] || fail "could not mint a token"
+          echo "TOKEN=$TOKEN"
+          echo "Kit $SVC is staged and NOT enrolled. Enrol it from INSIDE the VM (the customer experience):"
+          echo "  terminal:  docker exec -it rig-$SVC vm-ssh          (or: docker exec -it rig-$SVC console — login alpine/alpine)"
+          echo "  in the VM: NO_UP=1 TOKEN=<token> bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-starter-kit/main/bootstrap.sh)"
+          echo "             corewaf-demo-up" ;;
   stop)   ensure_repo; compose --profile kit stop ;;
   down)   ensure_repo; compose --profile kit down ;;
   reset)  ensure_repo; compose --profile kit --profile tools down -v ;;
   console) ensure_repo; compose --profile kit logs -f --tail=100 "${1:-app-1}" ;;
   url)    ensure_repo; urls ;;
   shell)  ensure_repo; exec bash ;;
-  *) sed -n '2,12p' "$0" ;;
+  *) sed -n '2,13p' "$0" ;;
 esac

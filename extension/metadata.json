@@ -10,10 +10,25 @@
   "host": {
     "binaries": [
       {
-        "darwin":  [ { "path": "/darwin/corewaf-rig" } ],
-        "linux":   [ { "path": "/linux/corewaf-rig" } ],
-        "windows": [ { "path": "/windows/corewaf-rig.exe" } ]
+        "darwin": [
+          {
+            "path": "/darwin/corewaf-rig"
+          }
+        ],
+        "linux": [
+          {
+            "path": "/linux/corewaf-rig"
+          }
+        ],
+        "windows": [
+          {
+            "path": "/windows/corewaf-rig.exe"
+          }
+        ]
       }
     ]
+  },
+  "vm": {
+    "composefile": "compose.yaml"
   }
 }

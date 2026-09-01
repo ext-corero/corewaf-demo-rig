@@ -1,0 +1,10 @@
+# Extension backend: WebSocket->PTY bridge for the embedded terminal.
+services:
+  pty:
+    image: ${DESKTOP_PLUGIN_IMAGE}
+    entrypoint: ["/corewaf-rig-pty"]
+    restart: always
+    ports:
+      - "127.0.0.1:53289:53289"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
