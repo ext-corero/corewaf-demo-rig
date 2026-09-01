@@ -50,7 +50,10 @@ ln -sfn "$(basename "$IMG")" "$BASE_DIR/current.qcow2"
 
 # ---- flatcar OS image (RIG_OS=flatcar; multi-cloud model: OS images come from OCI) ----
 if [[ "${RIG_OS:-alpine}" == flatcar ]]; then
-    [[ -n "${RIG_FLATCAR_REF:-}" ]] || die "RIG_OS=flatcar but RIG_FLATCAR_REF is not pinned in images.env"
+    if [[ -z "${RIG_FLATCAR_REF:-}" ]]; then
+        [[ -s "$BASE_DIR/current-flatcar.qcow2" ]] || die "RIG_OS=flatcar but RIG_FLATCAR_REF is not pinned in images.env (and no staged current-flatcar.qcow2)"
+        log "flatcar: RIG_FLATCAR_REF unset — using staged $(readlink -f "$BASE_DIR/current-flatcar.qcow2")"
+    else
     FGEN="${RIG_FLATCAR_REF##*:}"; FIMG="$BASE_DIR/corewaf-rig-flatcar-${FGEN}.qcow2"
     if [[ -s "$FIMG" ]] && { [[ -z "${RIG_FLATCAR_SHA256:-}" ]] || echo "$RIG_FLATCAR_SHA256  $FIMG" | sha256sum -c --quiet - 2>/dev/null; }; then
         log "flatcar: $FIMG present (sha ok)"
@@ -68,6 +71,7 @@ if [[ "${RIG_OS:-alpine}" == flatcar ]]; then
         mv -f "$f" "$FIMG"; echo "$got  $(basename "$FIMG")" > "$FIMG.sha256"; rm -rf "$tmp2"; log "flatcar: fetched (sha256 $got)"
     fi
     ln -sfn "$(basename "$FIMG")" "$BASE_DIR/current-flatcar.qcow2"
+    fi
     [[ "${RIG_BOOTSTRAP_CARRIER:-}" == iso && ! -s "$BASE_DIR/rig-bootstrap.iso" ]]       && log "NOTE: RIG_BOOTSTRAP_CARRIER=iso but $BASE_DIR/rig-bootstrap.iso is missing — build it with scripts/build-bootstrap-iso.sh"
 fi
 
