@@ -6,9 +6,13 @@ product on your own laptop, demo it to customers, and use it to build your own
 understanding of how the pieces fit — control plane, DNS layer, tunnel gateways,
 observability, and enrollable WAAP kits (the customer edge).
 
-Everything runs as containers that each host a real virtual machine (QEMU/KVM), so
-what you demonstrate behaves like the shipped product — same images, same enrolment
-flow, same GUI — while needing nothing but Docker and one credential.
+One design rule shapes everything here: **no drift from the shipped product**. The
+rig runs the *same virtual machine images and the same software* used across the
+project — there is no demo-only fork of anything. That is why the rig runs real
+VMs (in the Docker models, VMs *inside* containers), and it is also why the rig is
+resource-heavy: the weight is a deliberate outcome of that anti-drift choice, not
+an accident — one codebase, one image set, no second schism to maintain. We may
+streamline this in the future; correctness of what you demonstrate comes first.
 
 > Naming note: the product is **Corero WAAP**; you will see the internal codename
 > `corewaf` in repository, image and container names.
