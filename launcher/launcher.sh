@@ -52,8 +52,10 @@ fi
 ensure_repo() {
     REF="${COREWAF_RIG_REF:-$(channel_ref)}"   # inner run: LAUNCHER_IMAGE env is now set
     if [[ -d "$DIR/.git" ]]; then
-        git -C "$DIR" fetch -q origin "$REF" --tags 2>/dev/null || git -C "$DIR" fetch -q origin "$REF"
-        git -C "$DIR" checkout -q "$REF"
+        # full refspec: a bare `fetch origin <branch>` does not create the local ref,
+        # so switching channels (main <-> stable) in an existing volume would fail.
+        git -C "$DIR" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' --tags 2>/dev/null || true
+        git -C "$DIR" checkout -q "$REF" 2>/dev/null || git -C "$DIR" checkout -q -B "$REF" "origin/$REF"
         git -C "$DIR" pull -q --ff-only origin "$REF" 2>/dev/null || true   # detached tag: no pull
         ok "rig checkout refreshed ($REF)"
     else git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "rig cloned into volume $VOL ($REF)"; fi
