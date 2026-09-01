@@ -1,0 +1,73 @@
+# os-image — publish the pinned stock Flatcar qemu image as an OCI artifact:
+#   ghcr.io/ext-corero/os-images/flatcar-qemu:<ver>  +  <ECR>/io.corewaf.ghcr/os-images/flatcar-qemu:<ver>
+# Multi-cloud image model: download-verify (GPG + sha512) -> [customize: EMPTY by design,
+# stock byte-identical so Flatcar A/B updates stay valid] -> publish. Shared pipeline code
+# lives in corewaf-workspace/cicd/scripts (this system repo runs it).
+# Secrets: WORKSPACE_READ_TOKEN (read corewaf-workspace), AWS_* (ECR twin; self-skips).
+name: os-image
+on:
+  push:
+    branches: [main, feature/flatcar-v0]
+    paths: ["images.env", ".github/workflows/os-image.yml"]
+  workflow_dispatch:
+    inputs:
+      workspace_ref:
+        description: corewaf-workspace ref for shared scripts
+        default: main
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shared pipeline scripts (corewaf-workspace)
+        uses: actions/checkout@v4
+        with:
+          repository: ext-corero/corewaf-workspace
+          token: ${{ secrets.WORKSPACE_READ_TOKEN }}
+          ref: ${{ inputs.workspace_ref || 'feature/flatcar-v0' }}
+          path: .workspace
+          sparse-checkout: cicd/scripts
+      - id: pins
+        run: |
+          VER="$(sed -n 's/^RIG_FLATCAR_VERSION=//p' images.env)"
+          [ -n "$VER" ] || { echo "::error::RIG_FLATCAR_VERSION not pinned in images.env"; exit 1; }
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+      - name: Download + verify stock Flatcar (GPG + DIGESTS)
+        run: |
+          set -euo pipefail
+          BASE="https://stable.release.flatcar-linux.net/amd64-usr/${{ steps.pins.outputs.version }}"
+          curl -fsSL -O "$BASE/flatcar_production_qemu_image.img" \
+                     -O "$BASE/flatcar_production_qemu_image.img.DIGESTS" \
+                     -O "$BASE/flatcar_production_qemu_image.img.DIGESTS.asc"
+          curl -fsSL https://www.flatcar.org/security/image-signing-key/Flatcar_Image_Signing_Key.asc | gpg --import
+          gpg --verify flatcar_production_qemu_image.img.DIGESTS.asc flatcar_production_qemu_image.img.DIGESTS
+          grep -v '#' flatcar_production_qemu_image.img.DIGESTS | while read -r h f; do
+            case "$f" in *qemu_image.img) case "$h" in ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????*) echo "$h  flatcar_production_qemu_image.img" | sha512sum -c -;; esac;; esac; done
+          # customize stage: intentionally EMPTY — stock image, A/B update path preserved
+          mv flatcar_production_qemu_image.img "flatcar-qemu-${{ steps.pins.outputs.version }}.qcow2"
+      - name: Install oras
+        run: |
+          curl -fsSL https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz | sudo tar -xz -C /usr/local/bin oras
+      - name: Publish (GHCR + ECR twin)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          PUSH: "1"
+        run: |
+          bash .workspace/cicd/scripts/publish-os-image.sh flatcar-qemu "${{ steps.pins.outputs.version }}" "flatcar-qemu-${{ steps.pins.outputs.version }}.qcow2"
+      - name: Summary
+        run: |
+          { echo "### os-image flatcar-qemu published"; echo '```'
+            echo "RIG_FLATCAR_REF=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/os-images/flatcar-qemu:${{ steps.pins.outputs.version }}"
+            echo "RIG_FLATCAR_SHA256=$(cut -d' ' -f1 flatcar-qemu-${{ steps.pins.outputs.version }}.qcow2.sha256)"
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
