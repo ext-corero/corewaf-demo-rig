@@ -63,7 +63,7 @@ pick_ports() {
     ports="$(docker run --rm --net host alpine:3.23 sh -c 'netstat -ltn 2>/dev/null | awk "{print \$4}" | sed "s/.*://" | sort -u' 2>/dev/null || true)"
     ours="$(docker ps --filter name=rig- --format '{{.Ports}}' | grep -oE ':[0-9]+->' | tr -d ':>-' | sort -u || true)"
     ports="$(comm -23 <(echo "$ports" | sort -u) <(echo "$ours" | sort -u))"
-    for spec in RIG_HTTP_PORT:8080 RIG_GRAFANA_PORT:3000 RIG_STEPCA_PORT:9000; do
+    for spec in RIG_HTTP_PORT:28080 RIG_GRAFANA_PORT:23000 RIG_STEPCA_PORT:29000; do
         local var="${spec%%:*}" def="${spec##*:}" cur want p
         # preference: explicit env override > the default port > whatever a previous run recorded
         cur="$(sed -n "s/^$var=//p" .env | tail -1)"; want="${!var:-$def}"; p="$want"
@@ -83,7 +83,7 @@ wait_api() {       # the rig API must answer before minting tokens
     local t=0; while (( t < 300 )); do compose --profile tools run --rm -T cli curl -sf -m5 "http://$RIG_APP_FQDN_DEFAULT:8080/health" >/dev/null 2>&1 && return 0; sleep 10; t=$((t+10)); done; return 1
 }
 RIG_APP_FQDN_DEFAULT=app-1.rig.internal
-urls() { local h g; h="$(sed -n 's/^RIG_HTTP_PORT=//p' .env)"; g="$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env)"; echo "GUI:     http://gui-1.localhost:${h:-8080}"; echo "Grafana: http://grafana.localhost:${g:-3000}"; }
+urls() { local h g; h="$(sed -n 's/^RIG_HTTP_PORT=//p' .env)"; g="$(sed -n 's/^RIG_GRAFANA_PORT=//p' .env)"; echo "GUI:     http://gui-1.localhost:${h:-28080}"; echo "Grafana: http://grafana.localhost:${g:-23000}"; }
 
 case "$cmd" in
   up)     step "rig-launcher up"; ensure_repo; kvm_check; aws_env; registry_login; pick_ports

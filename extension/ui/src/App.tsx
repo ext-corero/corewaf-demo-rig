@@ -42,6 +42,8 @@ function healthColor(h: string): 'success' | 'warning' | 'error' | 'default' {
 export default function App() {
   const [profile, setProfile] = useState(() => load('rig.profile', DEFAULT_PROFILE));
   const [image, setImage] = useState(() => load('rig.image', DEFAULT_IMAGE));
+  const [guiPortCfg, setGuiPortCfg] = useState(() => load('rig.httpPort', '28080'));
+  const [grafanaPortCfg, setGrafanaPortCfg] = useState(() => load('rig.grafanaPort', '23000'));
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -53,6 +55,8 @@ export default function App() {
 
   useEffect(() => save('rig.profile', profile), [profile]);
   useEffect(() => save('rig.image', image), [image]);
+  useEffect(() => save('rig.httpPort', guiPortCfg), [guiPortCfg]);
+  useEffect(() => save('rig.grafanaPort', grafanaPortCfg), [grafanaPortCfg]);
 
   const refresh = useCallback(async () => {
     try {
@@ -85,13 +89,11 @@ export default function App() {
 
   useEffect(() => { logRef.current?.scrollTo({ top: logRef.current.scrollHeight }); }, [log]);
 
-  const hostPort = (node: string, guestPort: number): number | null => {
-    const r = rows.find((x) => x.name === `rig-${node}`);
-    const m = r?.ports.map((p) => p.split('→').map(Number)).find(([, g]) => g === guestPort);
-    return m ? m[0] : null;
-  };
-  const guiPort = hostPort('app-1', 8080);
-  const grafanaPort = hostPort('obs-1', 3000);
+
+  // URLs come from the configured ports (container port sniffing was unreliable
+  // on Docker Desktop); the fields below are the single source of truth.
+  const guiPort = guiPortCfg || '28080';
+  const grafanaPort = grafanaPortCfg || '23000';
   const appHealthy = rows.find((r) => r.name === 'rig-app-1')?.health === 'healthy';
   const infraUp = NODES.filter((n) => rows.find((r) => r.name === `rig-${n}`)?.health === 'healthy').length;
   const kitStates = Object.fromEntries(
@@ -103,7 +105,8 @@ export default function App() {
     setBusy(verb);
     setLog((l) => `${l}\n$ corewaf-rig ${verb} ${args.join(' ')}\n`);
     let captured = '';
-    ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...args], {
+    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`];
+    ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...envArgs, ...args], {
       stream: {
         onOutput: (d) => {
           captured += d.stdout ?? '';
@@ -142,10 +145,10 @@ export default function App() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
-          <Button size="small" sx={{ height: 32 }} variant="contained" disabled={!appHealthy || !guiPort} onClick={() => open(`http://gui-1.localhost:${guiPort}`)}>
+          <Button size="small" sx={{ height: 32 }} variant="contained" disabled={!appHealthy} onClick={() => open(`http://gui-1.localhost:${guiPort}`)}>
             Open GUI
           </Button>
-          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!grafanaPort} onClick={() => open(`http://grafana.localhost:${grafanaPort}`)}>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={rows.find((r) => r.name === 'rig-obs-1')?.health !== 'healthy'} onClick={() => open(`http://grafana.localhost:${grafanaPort}`)}>
             Grafana
           </Button>
           <Tooltip title="How to use this extension"><span>
@@ -156,6 +159,8 @@ export default function App() {
 
       <Stack direction="row" spacing={2} alignItems="center">
         <TextField size="small" label="AWS profile" value={profile} onChange={(e) => setProfile(e.target.value.trim())} sx={{ width: 200 }} />
+        <TextField size="small" label="GUI port" value={guiPortCfg} onChange={(e) => setGuiPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
+        <TextField size="small" label="Grafana port" value={grafanaPortCfg} onChange={(e) => setGrafanaPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
         <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
       </Stack>
 

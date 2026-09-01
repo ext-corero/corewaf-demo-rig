@@ -18,9 +18,13 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 )
+
+// KEY=VAL args the UI may pass through to the launcher container as env.
+var envArgRe = regexp.MustCompile(`^(RIG_HTTP_PORT|RIG_GRAFANA_PORT|RIG_STEPCA_PORT|TENANT)=[A-Za-z0-9._-]*$`)
 
 func home() string {
 	if u, err := user.Current(); err == nil && u.HomeDir != "" {
@@ -64,6 +68,17 @@ func main() {
 		os.Exit(2)
 	}
 	profile, image, verb, rest := os.Args[1], os.Args[2], os.Args[3], os.Args[4:]
+	// Leading KEY=VAL args after the verb become -e for the launcher container —
+	// the extension uses this for the host port settings (RIG_HTTP_PORT etc.).
+	var extraEnv []string
+	for len(rest) > 0 {
+		if envArgRe.MatchString(rest[0]) {
+			extraEnv = append(extraEnv, "-e", rest[0])
+			rest = rest[1:]
+			continue
+		}
+		break
+	}
 	awsDir := filepath.Join(home(), ".aws")
 	if _, err := os.Stat(awsDir); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s not found — configure the pull user first: aws configure --profile %s\n", awsDir, profile)
@@ -99,7 +114,9 @@ func main() {
 		sock = "//var/run/docker.sock" // Docker Desktop maps this to the engine's socket
 	}
 	args := []string{"run", "--rm", "-v", sock + ":/var/run/docker.sock", "-v", awsDir + ":/root/.aws:ro",
-		"-e", "AWS_PROFILE=" + profile, "-e", "TERM=dumb", image, verb}
+		"-e", "AWS_PROFILE=" + profile, "-e", "TERM=dumb"}
+	args = append(args, extraEnv...)
+	args = append(args, image, verb)
 	args = append(args, rest...)
 	if err := run("docker", args...); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

@@ -96,7 +96,7 @@ services:
       # operator's browser via the published port (*.localhost resolves to 127.0.0.1
       # in every browser without a hosts entry). RIG_HTTP_PORT = the host port the
       # hypervisor published 8080 on (from /etc/corewaf-bootstrap).
-      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-8080}","http://app-1.localhost:${RIG_HTTP_PORT:-8080}","http://localhost:5173"]'
+      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-28080}","http://app-1.localhost:${RIG_HTTP_PORT:-28080}","http://localhost:5173"]'
       # NOTE: no PROVISIONING_GATEWAY_URL. The token's gw claim is resolved by
       # the minter from the tenant→carrier→apex endpoint chain
       # (resolved_endpoints["zeroTrustGateway"], tokens.py) — the tenant +
@@ -159,7 +159,7 @@ services:
       waf-api: { condition: service_healthy }
     environment:
       # Browser-side API address: *.localhost + the published host port (no hosts file).
-      PUBLIC_API_HOST: "app-1.localhost:${RIG_HTTP_PORT:-8080}"
+      PUBLIC_API_HOST: "app-1.localhost:${RIG_HTTP_PORT:-28080}"
       # The operator's browser cannot reach the dns VMs; let the GUI server proxy
       # the DNS-bridge detail calls (GUI feature flag, default direct).
       PUBLIC_DNS_BRIDGE_ACCESS: proxy

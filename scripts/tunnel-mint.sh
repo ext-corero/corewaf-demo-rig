@@ -22,7 +22,7 @@ CARRIER="${CARRIER:-corero-system-owner-kit-manager}"
 # does). Not used for the mint itself.
 LISTER="${LISTER:-corero-system-owner}"
 PKG_NAME="${PKG_NAME:-tunnel-default}"
-RIG_HTTP_PORT="${RIG_HTTP_PORT:-8080}"
+RIG_HTTP_PORT="${RIG_HTTP_PORT:-28080}"
 LABEL="${1:-rig-demo-$(date +%s)}"
 
 # Platform-API ingress base. Single-host rig: corewaf.localhost. v2 multi-VM

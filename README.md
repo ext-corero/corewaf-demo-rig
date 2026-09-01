@@ -145,7 +145,7 @@ task demo:reset      # stage the demo kit VM + mint a token for the manual, in-V
 task stop / task up  # graceful VM shutdown / boot;   task reset wipes everything
 ```
 
-- GUI: **<http://gui-1.localhost:8080>** (any OS, no hosts file — the port is `RIG_HTTP_PORT` from `.env`) ·
+- GUI: **<http://gui-1.localhost:28080>** (any OS, no hosts file — host ports default to 28080/23000/29000, deliberately uncommon; `RIG_HTTP_PORT`/`RIG_GRAFANA_PORT`/`RIG_STEPCA_PORT` in `.env` — or the extension's port fields — override them) ·
   Grafana: `http://grafana.localhost:<RIG_GRAFANA_PORT>` · `scripts/hosts-block.sh` prints the optional `rig.internal` hosts lines.
 - Developer path: `RIG_MODE=source` builds the images from a sibling `corewaf-workspace` (see `compose/build/`).
 
@@ -171,7 +171,7 @@ Plus: `rig ssh <node>` for a shell in a guest, `rig-launcher console <node>` (or
 |---|---|
 | bootstrap: `/dev/kvm is not available to containers` | Linux: enable VT-x/AMD-V, `modprobe kvm_intel`; Windows: `.wslconfig nestedVirtualization=true` + `wsl --shutdown` |
 | node container exits with `KVM is required` | same as above (the node refuses to run under emulation) |
-| `Bind for 0.0.0.0:3000 failed: port is already allocated` | set `RIG_GRAFANA_PORT` (or `RIG_HTTP_PORT`/`RIG_STEPCA_PORT`) in `.env`; the bootstrap does this automatically |
+| `Bind ... failed: port is already allocated` | set `RIG_GRAFANA_PORT` (or `RIG_HTTP_PORT`/`RIG_STEPCA_PORT`) in `.env`; the bootstrap does this automatically |
 | `error getting credentials … docker-credential-desktop.exe` | non-interactive WSL shell → `DOCKER_CONFIG` workaround above |
 | `rig-init` fails: cannot mint a registry token | AWS credential missing/not in `corewaf-ecr-pull`; `AWS_PROFILE` needs `~/.aws` (mounted into rig-init) |
 | network `corewaf-rig`: pool overlaps / has active endpoints | another network on 192.168.150.0/24 (old libvirt bridge), or a stale kit endpoint: `docker network disconnect -f corewaf-rig rig-kit-a` |
