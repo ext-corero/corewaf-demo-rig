@@ -19,8 +19,10 @@ import { renderAnsi } from './ansi';
 
 const ddClient = createDockerDesktopClient();
 
+// Channel is baked at build time: the stable extension build defaults to the
+// :stable launcher (which in turn checks out the stable rig branch).
 const DEFAULT_IMAGE =
-  '123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:latest';
+  `123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/launcher:${import.meta.env.VITE_LAUNCHER_TAG ?? 'latest'}`;
 const DEFAULT_PROFILE = 'corewaf-ecr';
 const NODES = ['app-1', 'dns-1', 'dns-2', 'gw-1', 'gw-2', 'obs-1'];
 const KITS = ['demo', 'a', 'b'];

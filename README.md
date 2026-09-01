@@ -93,6 +93,24 @@ needed on the host), clones this repo, picks free host ports, and runs `docker c
 then the six node containers boot their VMs and each VM starts its stack. First run ≈ 7–11 min
 depending on bandwidth; later starts ≈ 1–2 min. It is safe to re-run.
 
+## Channels
+
+Two channels, same machinery:
+
+| | **stable** (recommended for users) | **development** |
+|---|---|---|
+| rig code | git branch `stable` (moves only at releases; tags `vX.Y.Z` freeze forever) | `main` |
+| curl | `bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/stable/bootstrap.sh)` | same URL with `/main/` |
+| launcher | `…/rig/launcher:stable` (or `:vX.Y.Z`) | `…/rig/launcher:latest` |
+| extension | `ghcr.io/ext-corero/corewaf-demo-rig/extension:stable` | `…/extension:latest` |
+
+The launcher derives the rig branch from its own image tag (`:stable` → `stable`,
+`:vX.Y.Z` → that tag, else `main`); `COREWAF_RIG_REF` overrides. Every rig image is
+pinned by `images.env` at the released commit, including the starter-kit ref
+(`KIT_REF_PIN`), so a version is a complete, reproducible runtime. Releases are cut
+with `scripts/release.sh vX.Y.0` (from main) or `scripts/release.sh --patch vX.Y.Z`
+(hotfix on the stable branch, e.g. a single `images.env` pin bump).
+
 ## Quick start
 
 Three equivalent entry points — pick one:

@@ -22,8 +22,13 @@ if [[ -d /rig/kitsrc ]]; then
     log "staging LOCAL starter-kit (kit-local override)"
     vm-ssh 'sudo rm -rf /opt/corewaf-starter-kit; sudo mkdir -p /opt/corewaf-starter-kit; sudo mount -t 9p -o trans=virtio,version=9p2000.L,cache=none,ro kitsrc /mnt 2>/dev/null; sudo cp -a /mnt/. /opt/corewaf-starter-kit/; sudo umount /mnt'
 else
-    log "cloning starter-kit ${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}@${KIT_REF:-main}"
-    vm-ssh "sudo rm -rf /opt/corewaf-starter-kit; sudo git clone -q --depth 1 --branch '${KIT_REF:-main}' '${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}' /opt/corewaf-starter-kit"
+    KREF="${KIT_REF:-${KIT_REF_PIN:-main}}"   # explicit env > release pin (images.env) > main
+    log "cloning starter-kit ${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}@$KREF"
+    if [[ "$KREF" =~ ^[0-9a-f]{7,40}$ ]]; then
+        vm-ssh "sudo rm -rf /opt/corewaf-starter-kit; sudo git clone -q '${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}' /opt/corewaf-starter-kit && sudo git -C /opt/corewaf-starter-kit checkout -q '$KREF'"
+    else
+        vm-ssh "sudo rm -rf /opt/corewaf-starter-kit; sudo git clone -q --depth 1 --branch '$KREF' '${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}' /opt/corewaf-starter-kit"
+    fi
 fi
 log "pulling kit images from the registry inside the guest (re-tagged for the public compose)"
 reg_kit_pull_script > /run/kit-pull.sh; vm-scp /run/kit-pull.sh /tmp/kit-pull.sh; vm-ssh 'sudo sh /tmp/kit-pull.sh'

@@ -160,7 +160,7 @@ services:
       RAM_MB: ${RIG_KIT_RAM_MB:-1024}
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
-      KIT_REF: "${KIT_REF:-main}"
+      KIT_REF: "${KIT_REF:-}"          # empty = use KIT_REF_PIN from images.env
     mac_address: ${RIG_KIT_DEMO_MAC:-52:54:00:96:00:c8}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -178,7 +178,7 @@ services:
       RAM_MB: ${RIG_KIT_RAM_MB:-1024}
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
-      KIT_REF: "${KIT_REF:-main}"
+      KIT_REF: "${KIT_REF:-}"          # empty = use KIT_REF_PIN from images.env
     mac_address: ${RIG_KIT_A_MAC:-52:54:00:96:00:c9}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -196,7 +196,7 @@ services:
       RAM_MB: ${RIG_KIT_RAM_MB:-1024}
       VCPUS: ${RIG_KIT_VCPUS:-1}
       KIT_REPO_URL: "${KIT_REPO_URL:-https://github.com/ext-corero/corewaf-starter-kit.git}"
-      KIT_REF: "${KIT_REF:-main}"
+      KIT_REF: "${KIT_REF:-}"          # empty = use KIT_REF_PIN from images.env
     mac_address: ${RIG_KIT_B_MAC:-52:54:00:96:00:ca}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:

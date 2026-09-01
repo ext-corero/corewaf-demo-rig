@@ -7,7 +7,14 @@ on:
   push:
     branches: [main]
     paths: ["extension/**", ".github/workflows/extension-image.yml"]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "latest (dev) or stable"
+        default: latest
+      version:
+        description: "release tag (vX.Y.Z) — used with channel=stable"
+        default: ""
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 permissions:
@@ -41,10 +48,12 @@ jobs:
           context: ./extension
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: VERSION=${{ steps.ver.outputs.tag }}
+          build-args: |
+            VERSION=${{ steps.ver.outputs.tag }}
+            CHANNEL=${{ github.event.inputs.channel || 'latest' }}
           tags: |
-            ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.tag }}
-            ghcr.io/${{ github.repository }}/extension:latest
+            ghcr.io/${{ github.repository }}/extension:${{ (github.event.inputs.channel == 'stable' && github.event.inputs.version != '') && github.event.inputs.version || steps.ver.outputs.tag }}
+            ghcr.io/${{ github.repository }}/extension:${{ github.event.inputs.channel == 'stable' && 'stable' || 'latest' }}
             ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.tag }}
             ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:latest
           cache-from: type=gha

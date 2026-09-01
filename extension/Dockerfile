@@ -7,6 +7,8 @@ WORKDIR /ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY ui/ .
+ARG CHANNEL=latest
+ENV VITE_LAUNCHER_TAG=$CHANNEL
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS host

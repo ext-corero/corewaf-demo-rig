@@ -11,7 +11,15 @@
 #   stop | down | reset                          console NODE (VM serial log)   url   browser URLs
 #   shell     bash in the launcher with the checkout mounted (debug)
 set -euo pipefail
-REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"; REF="${COREWAF_RIG_REF:-main}"
+REPO_URL="${COREWAF_RIG_REPO:-https://github.com/ext-corero/corewaf-demo-rig.git}"
+# Channel = the launcher image tag you ran: :stable -> stable branch, :vX.Y.Z -> that
+# tag, anything else -> main. COREWAF_RIG_REF always overrides. LAUNCHER_IMAGE is set
+# on the inner re-exec; the outer run self-inspects below before it matters.
+channel_ref() {
+    local tag="${LAUNCHER_IMAGE##*:}"
+    case "$tag" in stable) echo stable ;; v[0-9]*) echo "$tag" ;; *) echo main ;; esac
+}
+REF="${COREWAF_RIG_REF:-$(channel_ref)}"
 PROJECT=corewaf-demo-rig; VOL="${PROJECT}_repo"; DIR=/rig/repo
 REGISTRY_HOST="123517950721.dkr.ecr.us-east-1.amazonaws.com"; REGION="us-east-1"
 step() { printf '\n── %s ──\n' "$*"; }; ok() { printf '  \e[32m✓\e[0m %s\n' "$*"; }; warn() { printf '  \e[33m!\e[0m %s\n' "$*"; }
@@ -42,7 +50,12 @@ if [[ "${RIG_LAUNCHER_INNER:-0}" != 1 ]]; then
         "$IMG" "$cmd" "$@"
 fi
 ensure_repo() {
-    if [[ -d "$DIR/.git" ]]; then git -C "$DIR" fetch -q origin "$REF" && git -C "$DIR" checkout -q "$REF" && git -C "$DIR" pull -q --ff-only origin "$REF"; ok "rig checkout refreshed ($REF)"
+    REF="${COREWAF_RIG_REF:-$(channel_ref)}"   # inner run: LAUNCHER_IMAGE env is now set
+    if [[ -d "$DIR/.git" ]]; then
+        git -C "$DIR" fetch -q origin "$REF" --tags 2>/dev/null || git -C "$DIR" fetch -q origin "$REF"
+        git -C "$DIR" checkout -q "$REF"
+        git -C "$DIR" pull -q --ff-only origin "$REF" 2>/dev/null || true   # detached tag: no pull
+        ok "rig checkout refreshed ($REF)"
     else git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "rig cloned into volume $VOL ($REF)"; fi
     cd "$DIR"
 }
