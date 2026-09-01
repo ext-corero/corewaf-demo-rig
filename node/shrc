@@ -4,6 +4,12 @@
 # hangs the shell (every probe is timeout-guarded).
 if [ -t 0 ] && [ -z "${RIG_BANNER_SHOWN:-}" ]; then
   export RIG_BANNER_SHOWN=1
+  # A bare `docker exec` shell has the compose env (NODE_KEY + inventory.env)
+  # but not the entrypoint-derived NODE_*: derive them here.
+  if [ -n "${NODE_KEY:-}" ]; then
+    [ -n "${NODE_NAME:-}" ] || NODE_NAME=$(eval printf '%s' "\"\${${NODE_KEY}_NAME:-}\"")
+    [ -n "${NODE_IP:-}" ]   || NODE_IP=$(eval printf '%s' "\"\${${NODE_KEY}_IP:-}\"")
+  fi
   printf '\n\033[1m── CoreWAF rig · %s ──\033[0m  (this shell is the HYPERVISOR container, not the VM)\n' "${NODE_NAME:-node}"
   printf '   guest %s  role %s\n' "${NODE_IP:-?}" "${ROLE:-?}"
   if timeout 3 nc -z -w2 "${NODE_IP:-127.0.0.1}" 22 >/dev/null 2>&1; then
