@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CoreWAF demo rig — enrol a WAF kit, fully automatic (curl-pipe).
+# Corero WAAP demo rig — enrol a WAAP kit, fully automatic (curl-pipe).
 #
 #   bash <(curl -fsSL https://raw.githubusercontent.com/ext-corero/corewaf-demo-rig/main/kit.sh) [demo|a|b]
 #
@@ -21,7 +21,7 @@ DIR="${COREWAF_RIG_DIR:-corewaf-demo-rig}"
 step() { printf '\n── %s ──\n' "$*"; }; ok() { printf '  \e[32m✓\e[0m %s\n' "$*"; }
 fail() { printf '\e[31mERROR:\e[0m %s\n' "$*" >&2; exit 1; }
 
-step "CoreWAF demo rig — kit '$NAME'"
+step "Corero WAAP demo rig — kit '$NAME'"
 command -v docker >/dev/null || fail "docker is required"
 if [[ ! -f "$DIR/docker-compose.yml" ]]; then
     [[ -f docker-compose.yml && -f inventory.env ]] && DIR=. || { command -v git >/dev/null || fail "git is required"; git clone -q --branch "$REF" "$REPO_URL" "$DIR"; ok "cloned rig checkout → $DIR"; }
