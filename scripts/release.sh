@@ -39,9 +39,9 @@ git tag -a "$VER" -m "demo rig $VER"
 git push -q origin stable "$VER"
 echo "git: stable -> $(git rev-parse --short HEAD), tag $VER"
 
-# launcher: retag the digest currently behind :latest
-docker buildx imagetools create -t "$LAUNCHER:stable" -t "$LAUNCHER:$VER" "$LAUNCHER:latest"
-echo "launcher: :stable and :$VER now point at the :latest digest"
+# launcher: retag the digest currently behind :latest — in CI, which holds push creds
+gh workflow run launcher-image.yml -f retag_version="$VER"
+echo "launcher: dispatched retag of :latest -> :stable, :$VER (gh run watch to follow)"
 
 # extension: stable-channel build via workflow dispatch
 gh workflow run extension-image.yml -f channel=stable -f version="$VER"
