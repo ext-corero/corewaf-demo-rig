@@ -255,6 +255,20 @@ the legacy compose path until the flip).
   discovery in Step 3). App node splits by artifact boundary: step-ca, etcd,
   redis, waf-api, gui, caddy-edge on a shared external `app-rig` network
   (created idempotently by each manifest; cross-service DNS = compose aliases).
+- **Templates + staging**: instance config is rendered by the orchestrator's
+  template engine (`services/<svc>/templates/*` -> `config/*`, values from
+  `.Env`: bootstrap keys like `acme_url`/`dns_upstream`/`FQDN`, derived
+  `CS_DOMAIN`, manifest variables). Because `/opt/v2` is read-only, `vm-stack`
+  stages each service dir host-side onto the nodestate share — the guest sees
+  it rw at `/opt/rig-state/services/<svc>`, and rendered files are inspectable
+  host-side (model 3: `.qemu/state/<n>/share/services/...`). Fresh copy every
+  run. This mirrors "as unarchived from the OCI registry": Step 2 swaps the
+  copy for the bundle pull, nothing else moves.
+- **DNS seed = environment asset**: `services/dns/service.json` declares the
+  `dns-seed` asset (volume mounted ro at `/seed`). `compose up` skips asset
+  staging by design (attested-run-only) — vm-stack fills the volume from
+  `seed/rig.internal.zone`; Step 2's `run` pulls the real `zone-<zone>-seed`
+  artifact that production Terraform already publishes.
 - **Quick-dev**: build an image locally, then drop a git-ignored
   `services/<svc>/compose.override.yml`:
   `services: { waf-api: { image: corewaf/waf-api:dev, pull_policy: never } }`
