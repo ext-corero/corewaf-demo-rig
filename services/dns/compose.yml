@@ -1,0 +1,83 @@
+# demo rig — DNS stack (per dns VM). Ported from compose/dns.yml (orchestrator
+# path). Project-private network (nothing else on the VM joins it).
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  dns:
+    name: dns-rig
+    driver: bridge
+
+volumes:
+  redis-data:
+  bridge-state:   # cold-boot-persistent bridge identity (registration uuid)
+
+services:
+  redis:
+    image: ${IMAGE_REDIS}
+    container_name: rig2-redis
+    logging: *x-default-logging
+    restart: unless-stopped
+    networks: [ dns ]
+    volumes: [ "redis-data:/data" ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  coredns:
+    image: ${IMAGE_COREDNS}
+    container_name: rig2-coredns
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [ dns ]
+    ports:
+      # bind the service IP, not 0.0.0.0 — on Flatcar guests systemd-resolved's
+      # stub owns 127.0.0.53:53 and a wildcard bind collides with it
+      - "${NODE_IP}:53:53/udp"
+      - "${NODE_IP}:53:53/tcp"
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - /opt/v2/config/Corefile:/etc/coredns/Corefile:ro
+    labels:
+      corewaf.io/managed: "true"
+      corewaf.io/instance: "${NODE_NAME}"
+
+  dns-bridge:
+    image: ${IMAGE_DNS_BRIDGE}
+    container_name: rig2-dns-bridge
+    logging: *x-default-logging
+    restart: unless-stopped     # self-assembly: retry until app VM is reachable
+    depends_on:
+      redis: { condition: service_healthy }
+    networks: [ dns ]
+    environment:
+      ETCD_EVENT_API_ENDPOINT: http://app-1.rig.internal:8080/events
+      ETCD_DOMAIN_API_ENDPOINT: http://app-1.rig.internal:8080/domains
+      ETCD_NAMESPACES: '["corero-core"]'
+      ETCD_SCOPE_ORGID: system-dns-bridge
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      LOG_LEVEL: INFO
+      LOG_JSON: "false"
+      SEED_ZONE_PATH: /seed/rig.internal.zone
+      WEBHOOK_PUBLIC_URL: http://${FQDN}:8080
+      PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
+      BRIDGE_ID: ${NODE_NAME}
+      BRIDGE_REGION: rig-local
+      BRIDGE_VERSION: rig-dev
+      BRIDGE_ADVERTISED_URL: http://${FQDN}:8080
+      BRIDGE_HEARTBEAT_INTERVAL_S: "30"
+      BRIDGE_STATE_PATH: /var/run/dns-bridge/state/state.json
+      COREDNS_CONTAINER_NAME: rig2-coredns
+    ports:
+      - "8080:8080"
+    user: "0:0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/v2/seed:/seed:ro
+      - bridge-state:/var/run/dns-bridge/state

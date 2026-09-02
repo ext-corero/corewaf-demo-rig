@@ -84,6 +84,20 @@ bootstrap="NODE_NAME=$short
 FQDN=$NODE_FQDN
 ZONE=$RIG_DOMAIN
 NODE_IP=$NODE_IP"
+# prod-shape system keys (orchestrator env root; mirrors the template-written
+# /etc/bootstrap + adds system_ns, which the template does not carry yet). The
+# orchestrator wrapper mounts THIS file at /etc/bootstrap in its container, so
+# bootstrap = system-wide data + per-VM identity, exactly the production model.
+bootstrap+="
+# --- prod-shape system keys (orchestrator env root) ---
+system_name=rig
+system_site=demo
+system_ns=io.corewaf.ghcr/ext-corero/waf
+domain=${RIG_DOMAIN#*.}
+oci_registry=$(reg_host)
+acme_url=https://acme.$RIG_DOMAIN
+# root CA cert PATH (guest-visible); a service manifest variable root_ca_cert overrides
+root_ca_cert=/opt/rig-ca/root_ca.crt"
 if [[ -n "${RIG_HTTP_PORT:-}" ]]; then
     bootstrap+=$'\n'"RIG_HTTP_PORT=$RIG_HTTP_PORT"
     bootstrap+=$'\n'"PUBLIC_API_HOST=app-1.localhost:$RIG_HTTP_PORT"

@@ -1,0 +1,111 @@
+# demo rig — observability stack (obs VM). Ported from compose/obs.yml
+# (orchestrator path). DUAL-STACK: per-port HTTP (debug) + TLS by name on :443.
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  obs:
+    name: obs-rig
+
+volumes:
+  loki-data:
+  mimir-data:
+  grafana-data:
+  alertmanager-data:
+  caddy-obs-data:       # ACME account state + auto-issued certs (step-ca)
+
+services:
+  loki:
+    image: ${IMAGE_LOKI}
+    container_name: rig2-loki
+    logging: *x-default-logging
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    networks: [ obs ]
+    ports:
+      - "3100:3100"
+    volumes:
+      - /opt/v2/config/obs/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mimir:
+    image: ${IMAGE_MIMIR}
+    container_name: rig2-mimir
+    logging: *x-default-logging
+    restart: unless-stopped
+    command: ["-config.file=/etc/mimir/mimir.yaml", "-target=all"]
+    networks: [ obs ]
+    ports:
+      - "9009:9009"
+    volumes:
+      - /opt/v2/config/obs/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data
+    # No healthcheck: distroless image (externally probeable at :9009/ready).
+
+  alertmanager:
+    image: ${IMAGE_ALERTMANAGER}
+    container_name: rig2-alertmanager
+    logging: *x-default-logging
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks: [ obs ]
+    ports:
+      - "9093:9093"
+    volumes:
+      - /opt/v2/config/obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+
+  grafana:
+    image: ${IMAGE_GRAFANA}
+    container_name: rig2-grafana
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      loki: { condition: service_started }
+      mimir: { condition: service_started }
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_SERVER_ROOT_URL: "http://obs-1.rig.internal:3000/"
+    networks: [ obs ]
+    ports:
+      - "3000:3000"
+    volumes:
+      - /opt/v2/config/obs/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - grafana-data:/var/lib/grafana
+
+  # caddy-obs — HTTPS/SNI front (certs via ACME from the app VM's step-ca).
+  caddy-obs:
+    image: ${IMAGE_CADDY}
+    container_name: rig2-caddy-obs
+    logging: *x-default-logging
+    restart: unless-stopped
+    depends_on:
+      loki: { condition: service_started }
+      mimir: { condition: service_started }
+    env_file:
+      - ${COREWAF_BOOTSTRAP}     # node FQDN/name (parity with the gw edge)
+    environment:
+      CADDY_INGRESS_NETWORKS: obs-rig
+      CADDY_DOCKER_LABEL_PREFIX: obs_caddy
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile.fragment
+    ports:
+      - "80:80"       # ACME http-01 (step-ca dials <name>.rig.internal:80)
+      - "443:443"     # HTTPS/SNI front: loki/mimir/grafana/alertmanager.rig.internal
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${root_ca_cert}:/etc/ssl/rigca/root.crt:ro
+      - /opt/v2/config/Caddyfile.obs.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - caddy-obs-data:/data
+    networks: [ obs ]

@@ -1,0 +1,42 @@
+# demo rig — etcd (app node). Ported from compose/app.yml for the orchestrator
+# launch path (RIG_LAUNCH=orchestrator): image pin + network come from
+# service.json; env from /etc/bootstrap via the orchestrator.
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  app:
+    name: app-rig
+    external: true    # created by the manifest (docker.networks), shared by all app-node services
+
+volumes:
+  etcd-data:
+
+services:
+  etcd:
+    image: ${IMAGE_ETCD}
+    container_name: rig2-etcd
+    hostname: etcd
+    logging: *x-default-logging
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=etcd-cluster
+      - --auto-compaction-retention=1
+      - --log-level=info
+    volumes: [ "etcd-data:/etcd-data" ]
+    networks: [ app ]
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

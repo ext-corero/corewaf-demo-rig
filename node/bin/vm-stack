@@ -1,13 +1,54 @@
 #!/usr/bin/env bash
-# vm-stack — (re)start the role's docker stack inside the guest. Identical to the
-# libvirt-era `vmlab.sh stack`: the booted node is the source of truth; compose
-# reads /etc/corewaf-bootstrap + inventory.env + images.env from /opt/v2.
+# vm-stack — (re)start the role's docker stack inside the guest.
+# Two launch paths, selected by RIG_LAUNCH (opt-in flag; default = legacy):
+#   compose (default): the original contract — docker compose with
+#     inventory.env/images.env + compose/<role>.yml from /opt/v2 (unchanged).
+#   orchestrator: prod-shape system configuration — per-service service.json +
+#     compose.yml under /opt/v2/services/<svc>, consumed by the orchestrator's
+#     LOCAL verb (compose up). Env roots in the bootstrap file (bind-mounted at
+#     /etc/bootstrap inside the orchestrator container) + manifest variables.
+#     Step 1 of the orchestrator migration; `run --artifact-ref` = Step 2.
 source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 [[ "$ROLE" == kit ]] && { log "kit nodes have no rig stack"; exit 0; }
-files="-f compose/$ROLE.yml"; build=""
-if [[ "${RIG_MODE:-pull}" == source ]]; then files="$files -f compose/build/$ROLE.yml"; build="--build"; fi
 # the guest's dockerd may still be starting right after boot
 vm-ssh "$GUEST_SUDO $(docker_start_cmd) >/dev/null 2>&1 || true; for i in \$(seq 1 60); do $GUEST_SUDO docker info >/dev/null 2>&1 && exit 0; sleep 2; done; echo 'dockerd not ready' >&2; exit 1" || exit 1
+
+if [[ "${RIG_LAUNCH:-compose}" == orchestrator ]]; then
+    [[ "${RIG_MODE:-pull}" == source ]] && die "RIG_MODE=source is the legacy path's build mode; with RIG_LAUNCH=orchestrator use a services/<svc>/compose.override.yml dev pin (see README)"
+    [[ -n "${RIG_ORCHESTRATOR_REF:-}" ]] || die "RIG_ORCHESTRATOR_REF not set (images.env)"
+    rolefile="$V2_DIR/services/roles/$ROLE"
+    [[ -s "$rolefile" ]] || die "no services list at services/roles/$ROLE"
+    # Registry token for the orchestrator's own `docker compose pull` — client-side
+    # auth lives INSIDE the orchestrator container (regauth env seam), not in the
+    # guest root's docker config. Token visible on the guest cmdline: acceptable,
+    # the rig is open by design.
+    tok="$(reg_token 2>/dev/null)"
+    [[ -n "$tok" ]] || tok="$(jq -r --arg h "$(reg_host)" '.auths[$h].auth // empty' "$AUTH_DIR/docker-config.json" 2>/dev/null | base64 -d 2>/dev/null | cut -d: -f2-)"
+    [[ -n "$tok" ]] || die "cannot obtain an ECR token (reg_token / $AUTH_DIR/docker-config.json)"
+    # Warm-flip hygiene: the legacy projects hold the published ports.
+    vm-ssh "$GUEST_SUDO sh -c 'for p in compose obs-rig secrets-rig; do docker compose -p \$p down --remove-orphans >/dev/null 2>&1 || true; done'" || true
+    rc=0
+    while IFS= read -r svc; do
+        [[ -z "$svc" || "$svc" == \#* ]] && continue
+        log "orchestrator compose up: $svc"
+        cmd="$GUEST_SUDO docker run --rm"
+        cmd+=" -v /var/run/docker.sock:/var/run/docker.sock"
+        cmd+=" -v /etc/corewaf-bootstrap:/etc/bootstrap:ro"
+        cmd+=" -v /opt/v2:/opt/v2:ro"
+        cmd+=" -e COREWAF_REGISTRY=$(reg_host)"
+        cmd+=" -e COREWAF_REGISTRY_USERNAME=AWS"
+        cmd+=" -e COREWAF_REGISTRY_PASSWORD='$tok'"
+        cmd+=" $RIG_ORCHESTRATOR_REF compose up --manifest /opt/v2/services/$svc/service.json"
+        vm-ssh "$cmd" </dev/null || { rc=$?; log "orchestrator failed on $svc (rc=$rc)"; break; }
+    done < "$rolefile"
+    # a successful (re)start IS readiness — same health-flag contract as legacy
+    [[ $rc -eq 0 ]] && touch "$STATE_DIR/share/ready"
+    exit $rc
+fi
+
+# ── legacy compose path (default) ──────────────────────────────────────────
+files="-f compose/$ROLE.yml"; build=""
+if [[ "${RIG_MODE:-pull}" == source ]]; then files="$files -f compose/build/$ROLE.yml"; build="--build"; fi
 # flatcar: `docker compose` arrives via the bootstrap sysext (install-bootstrap.service,
 # after docker) — wait for it so a fast vm-stack doesn't race the artifact install
 if [[ "$GUEST_SUDO" == sudo ]]; then

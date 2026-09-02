@@ -1,0 +1,26 @@
+# demo rig — redis (app node). Ported from compose/app.yml (orchestrator path).
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  app:
+    name: app-rig
+    external: true
+
+volumes:
+  redis-data:
+
+services:
+  redis:
+    image: ${IMAGE_REDIS}
+    container_name: rig2-redis
+    logging: *x-default-logging
+    restart: unless-stopped
+    networks: [ app ]
+    volumes: [ "redis-data:/data" ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

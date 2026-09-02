@@ -1,0 +1,9 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "caddy-edge",
+    "description": "App-node HTTP ingress (caddy-docker-proxy, label-driven).",
+    "sources": { "caddy": { "image": "caddy-docker-proxy", "version": "1.0.1-dc8f18b" } },
+    "docker": { "projectName": "caddy-edge", "networks": [ { "app-rig": "bridge" } ] }
+  }
+}

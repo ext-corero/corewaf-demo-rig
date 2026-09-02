@@ -1,0 +1,13 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "dns",
+    "description": "Rig resolver stack (per dns VM): redis + coredns + dns-bridge.",
+    "sources": {
+      "coredns":    { "image": "coredns-redis", "version": "0.2.1-9c45d13" },
+      "dns-bridge": { "image": "dns-bridge",    "version": "0.2.1-9c45d13" }
+    },
+    "docker": { "projectName": "dns" },
+    "variables": { "IMAGE_REDIS": "redis:7-alpine" }
+  }
+}

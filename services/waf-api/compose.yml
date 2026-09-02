@@ -1,0 +1,72 @@
+# demo rig — waf-api (app node). Ported from compose/app.yml (orchestrator path).
+# Cross-service ordering (etcd first) moved to services/roles/app + this
+# container's own restart/healthcheck self-assembly (start_period 120s).
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  app:
+    name: app-rig
+    external: true
+
+volumes:
+  waf-api-state:
+
+services:
+  waf-api:
+    image: ${IMAGE_API}
+    container_name: rig2-waf-api
+    hostname: api-server
+    logging: *x-default-logging
+    restart: unless-stopped
+    environment:
+      ETCD_HOST: etcd
+      ETCD_PORT: "2379"
+      ALLOWED_NAMESPACES: '["corero-core","corero-system"]'
+      DEFAULT_NAMESPACE: corero-core
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      DEBUG_MODE: "false"
+      # CORS origins = the GUI's names (rig LAN + operator browser via published port).
+      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-28080}","http://app-1.localhost:${RIG_HTTP_PORT:-28080}","http://localhost:5173"]'
+      PROVISIONING_SIGNING_KEY_PATH: /var/lib/waf-api/envelope.jwk
+      # Intra-container service modules (Circus) — loopback wiring.
+      CADDY_API_PROVISIONING_URL: http://localhost:8009
+      CADDY_API_DOMAIN_API_URL: http://localhost:8002
+      CADDY_API_DOMAIN_SCOPE_ORG_ID: corero-system-owner
+      PROVISIONING_API_DOMAIN_API_URL: http://localhost:8002
+      PROVISIONING_API_DOMAIN_SCOPE_ORG_ID: corero-system-owner
+      SSL_CERT_FILE: /etc/operator-ca/root.crt
+    volumes:
+      - waf-api-state:/var/lib/waf-api
+      - ${root_ca_cert}:/etc/operator-ca/root.crt:ro
+    networks: [ app ]
+    # No `dns:` override — embedded 127.0.0.11 answers cross-project aliases
+    # (etcd, redis via the shared app-rig network) and forwards the rest.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 12
+      start_period: 120s   # cold start runs loader-zero migrations
+    labels:
+      caddy: "http://app-1.rig.internal, http://app-1.localhost"
+      caddy.0_handle_path: "/tenants/*"
+      caddy.0_handle_path.reverse_proxy: "{{upstreams http 8001}}"
+      caddy.1_handle_path: "/domains/*"
+      caddy.1_handle_path.reverse_proxy: "{{upstreams http 8002}}"
+      caddy.2_handle_path: "/validation/*"
+      caddy.2_handle_path.reverse_proxy: "{{upstreams http 8004}}"
+      caddy.3_handle_path: "/secrets/*"
+      caddy.3_handle_path.reverse_proxy: "{{upstreams http 8005}}"
+      caddy.4_handle_path: "/policy/*"
+      caddy.4_handle_path.reverse_proxy: "{{upstreams http 8006}}"
+      caddy.5_handle_path: "/events/*"
+      caddy.5_handle_path.reverse_proxy: "{{upstreams http 8007}}"
+      caddy.6_handle_path: "/caddys/*"
+      caddy.6_handle_path.reverse_proxy: "{{upstreams http 8003}}"
+      caddy.7_handle_path: "/provisioning/*"
+      caddy.7_handle_path.reverse_proxy: "{{upstreams http 8009}}"
+      caddy.8_handle: "/api/v1/authorization/*"
+      caddy.8_handle.reverse_proxy: "{{upstreams http 8008}}"
