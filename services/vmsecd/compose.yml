@@ -56,7 +56,7 @@ services:
       LOG_LEVEL: INFO
       LOG_JSON: "false"
       PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
-      NAMESPACE: corero-core
+      NAMESPACE: ${namespace}
       ETCD_SCOPE_ORGID: system-secrets-manager
       SECMAN_ID: ${NODE_NAME}-secman
       SECMAN_REGION: rig-local

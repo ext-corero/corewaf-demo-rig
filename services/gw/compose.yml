@@ -54,7 +54,7 @@ services:
     entrypoint: ["python", "-m", "tunnel_gateway.launcher"]
     environment:
       TUNNELGW_LOG_LEVEL: INFO
-      TUNNELGW_NAMESPACE: corero-core
+      TUNNELGW_NAMESPACE: ${namespace}
       TUNNELGW_PLATFORM_API_SCOPE_ORG_ID: corero-system-owner-tunnel-gateway
       TUNNELGW_GATEWAY_ID: ${NODE_NAME}
       TUNNELGW_GATEWAY_REGION: rig-local

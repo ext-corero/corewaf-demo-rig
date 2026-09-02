@@ -101,7 +101,14 @@ oci_registry=$(reg_host)
 acme_url=https://$RIG_APP_FQDN:9000/acme/acme/directory
 # root CA cert PATH (guest-visible); a service manifest variable root_ca_cert overrides
 root_ca_cert=/opt/rig-ca/root_ca.crt
-dns_upstream=${RIG_DNS_UPSTREAM:-8.8.8.8}"
+dns_upstream=${RIG_DNS_UPSTREAM:-8.8.8.8}
+# deployment plane: artifacts assembled BY/FOR this deployment (env assets;
+# service bundles at Step 2) home here — sibling of system_ns (code images)
+deployment_ns=io.corewaf.ghcr/deployments/rig-demo
+release=0.0.1
+# platform data namespaces (tenant/etcd scoping)
+namespace=corero-core
+namespaces=[\"corero-core\",\"corero-system\"]"
 if [[ -n "${RIG_HTTP_PORT:-}" ]]; then
     bootstrap+=$'\n'"RIG_HTTP_PORT=$RIG_HTTP_PORT"
     bootstrap+=$'\n'"PUBLIC_API_HOST=app-1.localhost:$RIG_HTTP_PORT"

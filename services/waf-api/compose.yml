@@ -23,8 +23,8 @@ services:
     environment:
       ETCD_HOST: etcd
       ETCD_PORT: "2379"
-      ALLOWED_NAMESPACES: '["corero-core","corero-system"]'
-      DEFAULT_NAMESPACE: corero-core
+      ALLOWED_NAMESPACES: '${namespaces}'
+      DEFAULT_NAMESPACE: ${namespace}
       LOG_LEVEL: INFO
       LOG_FORMAT: json
       DEBUG_MODE: "false"
