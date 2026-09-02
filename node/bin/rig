@@ -34,13 +34,13 @@ cmd_verify() {
     echo "== endpoints =="
     [[ $(code "$API/health") == 200 ]] && ok "API  $API/health" || bad "API  $API/health"
     [[ $(code "http://gui-1.$RIG_DOMAIN:8080/") == 200 ]] && ok "GUI  http://gui-1.$RIG_DOMAIN:8080" || bad "GUI  http://gui-1.$RIG_DOMAIN:8080"
-    [[ $(code "http://$RIG_OBS_1_IP:3000/api/health") == 200 ]] && ok "Grafana $RIG_OBS_1_IP:3000" || bad "Grafana $RIG_OBS_1_IP:3000"
-    gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP $RIG_GW_2_FQDN:$RIG_GW_2_IP"
-    [[ "${RIG_SIZE:-full}" == minimal ]] && gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP"
+    if [[ "${RIG_OBS:-1}" == 1 ]]; then [[ $(code "http://$RIG_OBS_1_IP:3000/api/health") == 200 ]] && ok "Grafana $RIG_OBS_1_IP:3000" || bad "Grafana $RIG_OBS_1_IP:3000"; fi
+    gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP"
+    [[ "${RIG_REDUNDANCY:-1}" == 1 ]] && gwlist+=" $RIG_GW_2_FQDN:$RIG_GW_2_IP"
     for gw in $gwlist; do f=${gw%%:*}; ip=${gw##*:}
         [[ $(code --cacert "$CA_DIR/root_ca.crt" --resolve "$f:443:$ip" "https://$f/health") == 200 ]] && ok "edge https://$f/health (valid cert)" || bad "edge https://$f/health"; done
     echo "== dns plane =="
-    resolvers_check="$RIG_RESOLVERS"; [[ "${RIG_SIZE:-full}" == minimal ]] && resolvers_check="$RIG_DNS_1_IP"
+    resolvers_check="$RIG_DNS_1_IP"; [[ "${RIG_REDUNDANCY:-1}" == 1 ]] && resolvers_check="$RIG_RESOLVERS"
     for ns in $resolvers_check; do a=$(dig +short +time=2 +tries=1 "@$ns" "$RIG_APP_FQDN" 2>/dev/null | head -1); [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"; done
     gssh app-1 'ping -c1 -W2 8.8.8.8 >/dev/null 2>&1' && ok "guest egress" || bad "guest egress (docker NAT)"
     echo "== gateways: WG peers =="
@@ -52,9 +52,11 @@ cmd_verify() {
 }
 # column(1) is not in the node image; align tab-separated rows with awk
 align() { awk -F'\t' '{for(i=1;i<=NF;i++){d[NR,i]=$i;if(length($i)>w[i])w[i]=length($i)}n=NR}END{for(r=1;r<=n;r++){for(i=1;i<=NF;i++)printf "%-"w[i]"s%s",d[r,i],(i==NF?"":"  ");print ""}}'; }
-INFRA_NODES="app-1 dns-1 dns-2 gw-1 gw-2 obs-1"
-GW_NODES="gw-1 gw-2"
-if [[ "${RIG_SIZE:-full}" == minimal ]]; then INFRA_NODES="app-1 dns-1 gw-1 obs-1"; GW_NODES="gw-1"; fi
+INFRA_NODES="app-1 dns-1"; GW_NODES="gw-1"
+[[ "${RIG_REDUNDANCY:-1}" == 1 ]] && INFRA_NODES+=" dns-2"
+INFRA_NODES+=" gw-1"
+[[ "${RIG_REDUNDANCY:-1}" == 1 ]] && { INFRA_NODES+=" gw-2"; GW_NODES+=" gw-2"; }
+[[ "${RIG_OBS:-1}" == 1 ]] && INFRA_NODES+=" obs-1"
 KIT_NODES="kit-demo kit-a kit-b"
 # node selection for ps/stat: explicit args, or all infra + kits that answer ssh
 select_nodes() {

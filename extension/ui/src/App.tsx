@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createDockerDesktopClient } from '@docker/extension-api-client';
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  Divider, Link, Stack, TextField, Tooltip, Typography,
+  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
+  Divider, FormControlLabel, Link, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import HelpDialog from './HelpDialog';
 import AddKitDialog, { type KitMode } from './AddKitDialog';
@@ -47,7 +47,9 @@ export default function App() {
   const [image, setImage] = useState(() => load(`rig.image.${CHANNEL}`, DEFAULT_IMAGE));
   const [guiPortCfg, setGuiPortCfg] = useState(() => load('rig.httpPort', '28080'));
   const [grafanaPortCfg, setGrafanaPortCfg] = useState(() => load('rig.grafanaPort', '23000'));
-  const [size, setSize] = useState(() => load('rig.size', 'full'));
+  const [redundancy, setRedundancy] = useState(() => load('rig.redundancy', '1') === '1');
+  const [obs, setObs] = useState(() => load('rig.obs', '1') === '1');
+  const [backstage, setBackstage] = useState(() => load('rig.backstage', '0') === '1');
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -61,7 +63,9 @@ export default function App() {
   useEffect(() => save(`rig.image.${CHANNEL}`, image), [image]);
   useEffect(() => save('rig.httpPort', guiPortCfg), [guiPortCfg]);
   useEffect(() => save('rig.grafanaPort', grafanaPortCfg), [grafanaPortCfg]);
-  useEffect(() => save('rig.size', size), [size]);
+  useEffect(() => save('rig.redundancy', redundancy ? '1' : '0'), [redundancy]);
+  useEffect(() => save('rig.obs', obs ? '1' : '0'), [obs]);
+  useEffect(() => save('rig.backstage', backstage ? '1' : '0'), [backstage]);
 
   const refresh = useCallback(async () => {
     try {
@@ -100,7 +104,7 @@ export default function App() {
   const guiPort = guiPortCfg || '28080';
   const grafanaPort = grafanaPortCfg || '23000';
   const appHealthy = rows.find((r) => r.name === 'rig-app-1')?.health === 'healthy';
-  const activeNodes = size === 'minimal' ? NODES.filter((n) => !['dns-2', 'gw-2'].includes(n)) : NODES;
+  const activeNodes = NODES.filter((n) => (redundancy || !['dns-2', 'gw-2'].includes(n)) && (obs || n !== 'obs-1'));
   const infraUp = activeNodes.filter((n) => rows.find((r) => r.name === `rig-${n}`)?.health === 'healthy').length;
   const kitStates = Object.fromEntries(
     KITS.map((k) => [k, rows.find((r) => r.name === `rig-kit-${k}`)?.health || rows.find((r) => r.name === `rig-kit-${k}`)?.state || '']),
@@ -111,7 +115,7 @@ export default function App() {
     setBusy(verb);
     setLog((l) => `${l}\n$ corewaf-rig ${verb} ${args.join(' ')}\n`);
     let captured = '';
-    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`, `RIG_SIZE=${size}`];
+    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`, `RIG_REDUNDANCY=${redundancy ? '1' : '0'}`, `RIG_OBS=${obs ? '1' : '0'}`, `RIG_BACKSTAGE=${backstage ? '1' : '0'}`];
     ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...envArgs, ...args], {
       stream: {
         onOutput: (d) => {
@@ -174,11 +178,15 @@ export default function App() {
         <TextField size="small" label="AWS profile" value={profile} onChange={(e) => setProfile(e.target.value.trim())} sx={{ width: 200 }} />
         <TextField size="small" label="GUI port" value={guiPortCfg} onChange={(e) => setGuiPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
         <TextField size="small" label="Grafana port" value={grafanaPortCfg} onChange={(e) => setGrafanaPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
-        <TextField size="small" select SelectProps={{ native: true }} label="System size" value={size} onChange={(e) => setSize(e.target.value)} sx={{ width: 220 }}
-          helperText={size === 'minimal' ? 'no dns-2/gw-2, no Backstage — saves 2 VMs' : 'full topology incl. redundancy'}>
-          <option value="full">Full (redundancy)</option>
-          <option value="minimal">Minimal (saves 2 VMs)</option>
-        </TextField>
+        <Tooltip title="dns-2 + gw-2 — the failover story; unchecking saves 2 VMs">
+          <FormControlLabel control={<Checkbox size="small" checked={redundancy} onChange={(e) => setRedundancy(e.target.checked)} />} label="Redundant GW+DNS" />
+        </Tooltip>
+        <Tooltip title="obs-1 — Grafana/Loki/Mimir; unchecking saves 1 VM">
+          <FormControlLabel control={<Checkbox size="small" checked={obs} onChange={(e) => setObs(e.target.checked)} />} label="OBS" />
+        </Tooltip>
+        <Tooltip title="start the Backstage portal on Up (always available on demand via its button)">
+          <FormControlLabel control={<Checkbox size="small" checked={backstage} onChange={(e) => setBackstage(e.target.checked)} />} label="Backstage" />
+        </Tooltip>
         <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
       </Stack>
 

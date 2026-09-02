@@ -241,9 +241,10 @@ functional goals ahead are organized as three tracks (this section is the living
    gateway saves two VMs (~4 GB and minutes of boot) when the demo doesn't need the
    failover story. First concrete step: a **system-size selector in the Docker Desktop
    extension** — *Minimal* (no dns-2/gw-2, Backstage not started by default) vs *Full*
-   (everything, as today). **Shipped**: the extension's *System size* field (next to the
-   port settings) drives `RIG_SIZE` on every Up; `verify`/`ps`/`stat` scope themselves
-   accordingly. Model 3 users compose their own set and don't need this.
+   (everything, as today). **Shipped**: three checkboxes in the extension — *Redundant
+   GW+DNS* (default on), *OBS* (default on), *Backstage* (default off) — drive
+   `RIG_REDUNDANCY`/`RIG_OBS`/`RIG_BACKSTAGE` on every Up; `verify`/`ps`/`stat` scope
+   themselves accordingly. Model 3 users compose their own set and don't need this.
 
 2. **Curated demo data.** The demo data set we have used in past demos becomes a
    **persistent, maintained artifact of the corewaf workspace** — versioned, fixed and
