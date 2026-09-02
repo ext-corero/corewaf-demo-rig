@@ -8,8 +8,8 @@
       "dns-bridge": { "image": "dns-bridge",    "version": "0.2.1-9c45d13" }
     },
     "docker": { "projectName": "dns", "volumes": [ { "dns-seed": "keep" } ] },
-    "_comment_assets": "dns-seed = the bootstrap zone artifact (prod publishes zone-<zone>-seed via terraform oci_artifacts). compose-up (dev) skips asset staging by design — vm-stack fills the volume from seed/rig.internal.zone; Step 2's attested run pulls the real artifact and pins its version here.",
-    "assets": { "dns-seed": { "artifact": "zone-rig-internal-seed", "version": "0.0.1" } },
+    "_comment_assets": "dns-seed = the bootstrap zone artifact, deployment-plane: resolves as ${REGISTRY}/${CS_DEPLOY_NS}/zone-<CS_DOMAIN>-seed:<release> (all from the bootstrap — same resolution at deploy and at CI/CD package time). compose-up (dev) skips asset staging by design — vm-stack fills the volume from seed/; Step 2's attested run pulls the artifact. Volume stays keep until that run refills it (recreate would wipe the dev fill).",
+    "assets": { "dns-seed": { "artifact": "zone-${CS_DOMAIN}-seed", "version": "${release}" } },
     "templates": [
       { "source": "templates/Corefile", "destination": "config/Corefile", "overwrite": true }
     ],

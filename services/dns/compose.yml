@@ -60,13 +60,13 @@ services:
     environment:
       ETCD_EVENT_API_ENDPOINT: http://app-1.rig.internal:8080/events
       ETCD_DOMAIN_API_ENDPOINT: http://app-1.rig.internal:8080/domains
-      ETCD_NAMESPACES: '["corero-core"]'
+      ETCD_NAMESPACES: '["${namespace}"]'
       ETCD_SCOPE_ORGID: system-dns-bridge
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       LOG_LEVEL: INFO
       LOG_JSON: "false"
-      SEED_ZONE_PATH: /seed/rig.internal.zone
+      SEED_ZONE_PATH: /seed/${CS_DOMAIN}.zone
       WEBHOOK_PUBLIC_URL: http://${FQDN}:8080
       PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
       BRIDGE_ID: ${NODE_NAME}
