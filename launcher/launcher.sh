@@ -48,7 +48,7 @@ if [[ "${RIG_LAUNCHER_INNER:-0}" != 1 ]]; then
     TTY=""; [[ -t 0 && -t 1 ]] && TTY="-it"
     exec docker run --rm $TTY -v /var/run/docker.sock:/var/run/docker.sock -v "$VOL:$DIR" \
         -e RIG_LAUNCHER_INNER=1 -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
-        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_BOOTSTRAP_CARRIER -e RIG_REDUNDANCY -e RIG_OBS -e RIG_BACKSTAGE -e LAUNCHER_IMAGE="$IMG" \
+        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_BOOTSTRAP_CARRIER -e RIG_REDUNDANCY -e RIG_OBS -e RIG_BACKSTAGE -e RIG_JUICE -e LAUNCHER_IMAGE="$IMG" \
         "$IMG" "$cmd" "$@"
 fi
 ensure_repo() {
@@ -120,9 +120,10 @@ case "$cmd" in
           step "docker compose up -d ($SVCS)"
           compose up -d $SVCS
           if [[ "${RIG_BACKSTAGE:-0}" == 1 ]]; then compose --profile portal up -d backstage; else docker rm -f rig-backstage >/dev/null 2>&1 || true; fi
+          if [[ "${RIG_JUICE:-1}" == 1 ]]; then compose --profile juice up -d juice; else docker rm -f rig-juice >/dev/null 2>&1 || true; fi
           wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
-  verify) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" cli rig verify ;;
+  verify) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" -e RIG_JUICE="${RIG_JUICE:-1}" cli rig verify ;;
   seed|ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" cli rig "$cmd" "$@" ;;
   kit)    ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"

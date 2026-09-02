@@ -241,18 +241,6 @@ services:
       retries: 20
       start_period: 8s
 
-  # OWASP Juice Shop — the demo "protected entity" (track 3): a deliberately
-  # vulnerable origin the kits' WAAP instances front. Published on the app VM's
-  # routed IP (:3000) so it is reachable from the kit VMs (juice.rig.internal);
-  # NOT exposed on any host port — rig-internal only, by design.
-  juice:
-    image: ${JUICE_SHOP_IMAGE}
-    container_name: rig2-juice
-    logging: *x-default-logging
-    restart: unless-stopped
-    ports: ["3000:3000"]
-    networks: [ app ]
-
   # Registers the tunnel-gateway-service JWK + ACME provisioners and writes
   # provisioner.jwk / root.crt / fingerprint to the SHARED host dir so the gw
   # VMs (which mount the same /opt/shared-secrets) can read them.

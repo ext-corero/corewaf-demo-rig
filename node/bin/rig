@@ -35,6 +35,7 @@ cmd_verify() {
     [[ $(code "$API/health") == 200 ]] && ok "API  $API/health" || bad "API  $API/health"
     [[ $(code "http://gui-1.$RIG_DOMAIN:8080/") == 200 ]] && ok "GUI  http://gui-1.$RIG_DOMAIN:8080" || bad "GUI  http://gui-1.$RIG_DOMAIN:8080"
     if [[ "${RIG_OBS:-1}" == 1 ]]; then [[ $(code "http://$RIG_OBS_1_IP:3000/api/health") == 200 ]] && ok "Grafana $RIG_OBS_1_IP:3000" || bad "Grafana $RIG_OBS_1_IP:3000"; fi
+    if [[ "${RIG_JUICE:-1}" == 1 ]]; then [[ $(code "http://${RIG_JUICE_IP:-192.168.150.50}:3000/") == 200 ]] && ok "Juice Shop ${RIG_JUICE_IP:-192.168.150.50}:3000" || bad "Juice Shop ${RIG_JUICE_IP:-192.168.150.50}:3000"; fi
     gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP"
     [[ "${RIG_REDUNDANCY:-1}" == 1 ]] && gwlist+=" $RIG_GW_2_FQDN:$RIG_GW_2_IP"
     for gw in $gwlist; do f=${gw%%:*}; ip=${gw##*:}

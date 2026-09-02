@@ -50,6 +50,7 @@ export default function App() {
   const [redundancy, setRedundancy] = useState(() => load('rig.redundancy', '1') === '1');
   const [obs, setObs] = useState(() => load('rig.obs', '1') === '1');
   const [backstage, setBackstage] = useState(() => load('rig.backstage', '0') === '1');
+  const [juice, setJuice] = useState(() => load('rig.juice', '1') === '1');
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -66,6 +67,7 @@ export default function App() {
   useEffect(() => save('rig.redundancy', redundancy ? '1' : '0'), [redundancy]);
   useEffect(() => save('rig.obs', obs ? '1' : '0'), [obs]);
   useEffect(() => save('rig.backstage', backstage ? '1' : '0'), [backstage]);
+  useEffect(() => save('rig.juice', juice ? '1' : '0'), [juice]);
 
   const refresh = useCallback(async () => {
     try {
@@ -115,7 +117,7 @@ export default function App() {
     setBusy(verb);
     setLog((l) => `${l}\n$ corewaf-rig ${verb} ${args.join(' ')}\n`);
     let captured = '';
-    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`, `RIG_REDUNDANCY=${redundancy ? '1' : '0'}`, `RIG_OBS=${obs ? '1' : '0'}`, `RIG_BACKSTAGE=${backstage ? '1' : '0'}`];
+    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`, `RIG_REDUNDANCY=${redundancy ? '1' : '0'}`, `RIG_OBS=${obs ? '1' : '0'}`, `RIG_BACKSTAGE=${backstage ? '1' : '0'}`, `RIG_JUICE=${juice ? '1' : '0'}`];
     ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...envArgs, ...args], {
       stream: {
         onOutput: (d) => {
@@ -190,6 +192,9 @@ export default function App() {
         </Tooltip>
         <Tooltip title="start the Backstage portal on Up (always available on demand via its button)">
           <FormControlLabel control={<Checkbox size="small" checked={backstage} onChange={(e) => setBackstage(e.target.checked)} />} label="Backstage" />
+        </Tooltip>
+        <Tooltip title="OWASP Juice Shop — the demo protected entity the kits' WAAP fronts (juice.rig.internal:3000, kit-reachable only)">
+          <FormControlLabel control={<Checkbox size="small" checked={juice} onChange={(e) => setJuice(e.target.checked)} />} label="Juice Shop" />
         </Tooltip>
       </Stack>
 

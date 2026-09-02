@@ -257,8 +257,11 @@ functional goals ahead are organized as three tracks (this section is the living
    curated demo data from track 2 — dashboards moving, attacks blocked, the full
    story. *Deliberately deferred*: it needs focused attention and a newer release of
    the API before the rig can wire it. **The origin is already in place**: OWASP
-   Juice Shop runs as a container on the app VM (`juice.rig.internal:3000`),
-   reachable from the kit VMs only — no host exposure.
+   Juice Shop runs as a plain container on the rig network
+   (`juice.rig.internal:3000`, its own *Juice Shop* checkbox, green health in
+   Docker Desktop), reachable from the kit VMs only — no host exposure.
+   Model 3: run it on the host (`docker run -d --name rig-juice -p 3000:3000
+   bkimminich/juice-shop:v20.2.0`); kits reach it via the bridge gateway IP.
 
 Beyond the demo tracks, the rig's second job is **development**: the first feature to
 be homologated and integrated on the rig is the **orchestrator** — which is also when

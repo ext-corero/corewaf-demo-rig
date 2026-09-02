@@ -222,6 +222,24 @@ services:
   # the worked example of a component where product parity does not need the
   # VM treatment. On-demand via the `portal` profile (extension button /
   # `rig-launcher portal`). Image twin pushed by the workspace backstage CI.
+  # OWASP Juice Shop — the demo "protected entity" (track 3 origin): a plain
+  # container on the rig network, reachable from the kit VMs at
+  # juice.rig.internal (192.168.150.50). No host port — rig-internal only.
+  juice:
+    image: ${JUICE_SHOP_IMAGE:-bkimminich/juice-shop:v20.2.0}
+    container_name: rig-juice
+    profiles: [juice]
+    restart: unless-stopped
+    networks:
+      rig:
+        ipv4_address: ${RIG_JUICE_IP:-192.168.150.50}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/rest/admin/application-version', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   backstage:
     image: ${RIG_REGISTRY:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/ext-corero}/backstage:${BACKSTAGE_TAG:-latest}
     container_name: rig-backstage
