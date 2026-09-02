@@ -273,6 +273,11 @@ the legacy compose path until the flip).
   name=corewaf- | xargs docker rm -f` + `rm -rf /var/lib/tunnel/*` — the
   netns container holds old wg routes); the rejoin lands in the designed
   ZTK-quarantine flow (operator clearance in the GUI).
+- **Demo data is NOT the rig's**: it lives in `waf/api/demo/` and is owned +
+  versioned by the API (ships inside the waf-api image at `/app/demo` — see
+  `waf/api/demo/README.md`). `rig seed` only invokes it in the running
+  container, always through the platform HTTP API; the rig carries no demo
+  data and nothing writes etcd directly.
 - Orchestrator omissions found during this work are logged in
   `corewaf-workspace/orchestrator/docs/rig-homologation-findings.md`.
 - Step 2: CI publishes per-service OCI bundles; `run --artifact-ref` replaces
