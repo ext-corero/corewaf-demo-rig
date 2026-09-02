@@ -1,0 +1,59 @@
+# bootstrap-artifacts — build+publish the boot-time payload (compose sysext + ecr helper)
+# as a scratch container image, docker-fetched in-guest by the shared Flatcar template:
+#   ghcr.io/ext-corero/os-images/bootstrap-artifacts:<tag>  +  ECR twin
+# Shared pipeline code: corewaf-workspace/cicd/scripts/build-bootstrap-artifacts.sh.
+name: bootstrap-artifacts
+on:
+  push:
+    branches: [main, feature/flatcar-v0]
+    paths: ["images.env", ".github/workflows/bootstrap-artifacts.yml"]
+  workflow_dispatch:
+    inputs:
+      workspace_ref:
+        description: corewaf-workspace ref for shared scripts
+        default: main
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shared pipeline scripts (corewaf-workspace)
+        uses: actions/checkout@v4
+        with:
+          repository: ext-corero/corewaf-workspace
+          token: ${{ secrets.WORKSPACE_READ_TOKEN }}
+          ref: ${{ inputs.workspace_ref || 'feature/flatcar-v0' }}
+          path: .workspace
+          sparse-checkout: cicd/scripts
+      - id: pins
+        run: |
+          echo "compose=$(sed -n 's/^RIG_COMPOSE_SYSEXT_VERSION=//p' images.env)" >> "$GITHUB_OUTPUT"
+          echo "tag=$(sed -n 's/^RIG_COMPOSE_SYSEXT_VERSION=//p' images.env)-$(git log -1 --format=%h -- images.env .github/workflows/bootstrap-artifacts.yml)" >> "$GITHUB_OUTPUT"
+      - name: GHCR login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push (GHCR + ECR twin)
+        env:
+          COMPOSE_VERSION: ${{ steps.pins.outputs.compose }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+          PUSH: "1"
+        run: bash .workspace/cicd/scripts/build-bootstrap-artifacts.sh "${{ steps.pins.outputs.tag }}"
+      - name: Summary
+        run: |
+          { echo "### bootstrap-artifacts published"; echo '```'
+            echo "RIG_BOOTSTRAP_ARTIFACTS_REF=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/os-images/bootstrap-artifacts:${{ steps.pins.outputs.tag }}"
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"

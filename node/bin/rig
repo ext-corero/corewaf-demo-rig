@@ -14,7 +14,7 @@ source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 V2="${V2_DIR:-/rig/v2}"
 API="http://$RIG_APP_FQDN:8080"      # cli resolves rig.internal via the dns VMs (compose dns:)
 ip_of() { case "$1" in app-1) echo "$RIG_APP_IP";; dns-1) echo "$RIG_DNS_1_IP";; dns-2) echo "$RIG_DNS_2_IP";; gw-1) echo "$RIG_GW_1_IP";; gw-2) echo "$RIG_GW_2_IP";; obs-1) echo "$RIG_OBS_1_IP";; kit-demo) echo "$RIG_KIT_DEMO_IP";; kit-a) echo "$RIG_KIT_A_IP";; kit-b) echo "$RIG_KIT_B_IP";; *) echo "";; esac; }
-gssh() { local ip; ip="$(ip_of "$1")"; shift; ssh "${SSH_OPTS[@]}" "alpine@$ip" "$@"; }
+gssh() { local n ip u; n="$1"; ip="$(ip_of "$n")"; u="$(guest_user_for "$n")"; shift; ssh "${SSH_OPTS[@]}" "$u@$ip" "$@"; }
 
 cmd_verify() {
     local pass=0 fail=0
@@ -24,7 +24,7 @@ cmd_verify() {
     code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
     echo "== guests (ssh) + containers =="
     for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1; do
-        out=$(gssh "$n" "doas docker ps -a --format '{{.Names}} {{.Status}}'" 2>/dev/null) || { bad "$n: ssh unreachable ($(ip_of "$n"))"; continue; }
+        out=$(gssh "$n" "$(guest_sudo_for "$n") docker ps -a --format '{{.Names}} {{.Status}}'" 2>/dev/null) || { bad "$n: ssh unreachable ($(ip_of "$n"))"; continue; }
         [[ -z "$out" ]] && { bad "$n: no containers"; continue; }
         while read -r cname cstatus; do
             [[ -z "$cname" ]] && continue
@@ -41,7 +41,7 @@ cmd_verify() {
     for ns in $RIG_RESOLVERS; do a=$(dig +short +time=2 +tries=1 "@$ns" "$RIG_APP_FQDN" 2>/dev/null | head -1); [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"; done
     gssh app-1 'ping -c1 -W2 8.8.8.8 >/dev/null 2>&1' && ok "guest egress" || bad "guest egress (docker NAT)"
     echo "== gateways: WG peers =="
-    for n in gw-1 gw-2; do c=$(gssh "$n" "doas wg show 2>/dev/null | grep -c 'latest handshake'" 2>/dev/null | head -1); c=${c:-0}; [[ "$c" -gt 0 ]] && ok "$n: $c peer(s) with a handshake" || warn "$n: no active peers"; done
+    for n in gw-1 gw-2; do sd="$(guest_sudo_for "$n")"; wg="$sd wg show"; [[ "$sd" == sudo ]] && wg="$sd docker exec rig2-tunnel-gateway wg show"; c=$(gssh "$n" "$wg 2>/dev/null | grep -c 'latest handshake'" 2>/dev/null | head -1); c=${c:-0}; [[ "$c" -gt 0 ]] && ok "$n: $c peer(s) with a handshake" || warn "$n: no active peers"; done
     echo "== registered WAF instances =="
     curl -s --max-time 5 -H 'X-Scope-OrgID: corero-system-owner' "$API/caddys/api/v1/namespaces/corero-core/caddy/instances" \
       | jq -r --arg now "$(date -u +%s)" '.instances[]? | .instance | "  \(.metadata.name[0:8])  \(.status.phase // "?")  lastSeen \(if .status.lastSeen then (($now|tonumber) - (.status.lastSeen | sub("\\.[0-9]+";"") | sub("\\+00:00";"Z") | fromdateiso8601)) | tostring + "s ago" else "never" end)"' 2>/dev/null || warn "could not list instances"
@@ -62,7 +62,7 @@ select_nodes() {
 cmd_ps() {
     local nodes tmp n; nodes="$(select_nodes "$@")"; tmp="$(mktemp -d)"
     for n in $nodes; do
-        ( gssh "$n" "doas docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}'" 2>/dev/null \
+        ( gssh "$n" "$(guest_sudo_for "$n") docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}'" 2>/dev/null \
             | awk -F'\t' -v n="$n" '{img=$3; sub(".*/","",img); printf "%s\t%s\t%s\t%s\n", n, $1, $2, img}' > "$tmp/$n" \
             || echo -e "$n\t-\tunreachable\t-" > "$tmp/$n" ) &
     done; wait
@@ -85,12 +85,12 @@ cmd_stat() {
 cmd_logs() {
     local n="${1:?node}" c="${2:?container}"; shift 2
     [[ $# -gt 0 ]] || set -- --tail 50
-    gssh "$n" "doas docker logs $(printf '%q ' "$@") $(printf '%q' "$c")"
+    gssh "$n" "$(guest_sudo_for "$n") docker logs $(printf '%q ' "$@") $(printf '%q' "$c")"
 }
 cmd_exec() {
     local n="${1:?node}" c="${2:?container}"; shift 2
     [[ $# -gt 0 ]] || { echo "usage: rig exec <node> <container> <cmd...>" >&2; return 2; }
-    gssh "$n" "doas docker exec $(printf '%q' "$c") $(printf '%q ' "$@")"
+    gssh "$n" "$(guest_sudo_for "$n") docker exec $(printf '%q' "$c") $(printf '%q ' "$@")"
 }
 cmd_mint() {
     local label="${1:-demo}" tenant="${2:-}"

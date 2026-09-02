@@ -32,7 +32,8 @@ fi
 
 bootstrap="NODE_NAME=$short\nFQDN=$NODE_FQDN\nZONE=$RIG_DOMAIN\nNODE_IP=$NODE_IP\n"
 # the host port the hypervisor publishes the GUI/API on (browser-facing *.localhost URLs)
-[[ -n "${RIG_HTTP_PORT:-}" ]] && bootstrap+="RIG_HTTP_PORT=$RIG_HTTP_PORT\n"
+if [[ -n "${RIG_HTTP_PORT:-}" ]]; then bootstrap+="RIG_HTTP_PORT=$RIG_HTTP_PORT\nPUBLIC_API_HOST=app-1.localhost:$RIG_HTTP_PORT\n"
+else bootstrap+="PUBLIC_API_HOST=app-1.$RIG_DOMAIN:8080\n"; fi
 if [[ "$ROLE" == gw ]]; then
     cidr="$(node_var IPAM_CIDR)"; addr="$(node_var WG_ADDR)"
     [[ -n "$cidr" ]] && bootstrap+="IPAM_CIDR=$cidr\n"; [[ -n "$addr" ]] && bootstrap+="WG_ADDR=$addr\n"

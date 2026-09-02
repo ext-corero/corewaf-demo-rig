@@ -7,8 +7,13 @@ source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 files="-f compose/$ROLE.yml"; build=""
 if [[ "${RIG_MODE:-pull}" == source ]]; then files="$files -f compose/build/$ROLE.yml"; build="--build"; fi
 # the guest's dockerd may still be starting right after boot
-vm-ssh 'doas rc-service docker start >/dev/null 2>&1 || true; for i in $(seq 1 60); do doas docker info >/dev/null 2>&1 && exit 0; sleep 2; done; echo "dockerd not ready" >&2; exit 1' || exit 1
-run() { vm-ssh "doas rc-service docker start >/dev/null 2>&1 || true; doas sh -c 'cd /opt/v2 && set -a; . /etc/corewaf-bootstrap; [ -f /opt/shared-secrets/rig-secrets.env ] && . /opt/shared-secrets/rig-secrets.env; set +a; HOSTNAME=\"\$(hostname)\" RIG_SRC=${RIG_WORKSPACE_MOUNT:-/opt/corewaf-workspace} docker compose --env-file inventory.env --env-file images.env $1 up $build -d'"; }
+vm-ssh "$GUEST_SUDO $(docker_start_cmd) >/dev/null 2>&1 || true; for i in \$(seq 1 60); do $GUEST_SUDO docker info >/dev/null 2>&1 && exit 0; sleep 2; done; echo 'dockerd not ready' >&2; exit 1" || exit 1
+# flatcar: `docker compose` arrives via the bootstrap sysext (install-bootstrap.service,
+# after docker) — wait for it so a fast vm-stack doesn't race the artifact install
+if [[ "$GUEST_SUDO" == sudo ]]; then
+    vm-ssh 'for i in $(seq 1 60); do sudo docker compose version >/dev/null 2>&1 && exit 0; sleep 2; done; echo "docker compose (bootstrap sysext) never arrived" >&2; exit 1' || exit 1
+fi
+run() { vm-ssh "$GUEST_SUDO $(docker_start_cmd) >/dev/null 2>&1 || true; $GUEST_SUDO sh -c 'cd /opt/v2 && set -a; . /etc/corewaf-bootstrap; [ -f /opt/shared-secrets/rig-secrets.env ] && . /opt/shared-secrets/rig-secrets.env; set +a; HOSTNAME=\"\$(hostname)\" RIG_SRC=${RIG_WORKSPACE_MOUNT:-/opt/corewaf-workspace} docker compose --env-file inventory.env --env-file images.env $1 up $build -d'"; }
 rc=0
 run "$files" || rc=$?
 if [[ "$ROLE" == dns ]]; then run "-f compose/secrets.yml" || rc=$?; fi

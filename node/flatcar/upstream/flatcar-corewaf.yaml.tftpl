@@ -1,0 +1,501 @@
+---
+variant: flatcar
+version: 1.0.0
+
+passwd:
+  users:
+    - name: core
+      groups:
+        - sudo
+        - docker
+      ssh_authorized_keys:
+        - ${ssh_public_key}
+
+storage:
+  filesystems:
+    - label: ROOT
+      device: /dev/disk/by-label/ROOT
+      format: ext4
+      wipe_filesystem: true
+    - label: OEM
+      device: /dev/disk/by-label/OEM
+      format: btrfs
+
+  files:
+    - path: /etc/hostname
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: ${hostname}
+
+    # Static IP configuration via systemd-networkd
+    - path: /etc/systemd/network/10-static.network
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: |
+          [Match]
+          Name=ens192
+
+          [Network]
+          Address=${ip}/${prefix_length}
+          Gateway=${gateway}
+          DNS=8.8.8.8
+          DNS=8.8.4.4
+
+    - path: /etc/hosts
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: |
+          127.0.0.1 localhost
+          127.0.1.1 ${hostname}
+          ${hosts_entries}
+
+    # Bootstrap metadata — service discovery for compose stacks
+    - path: /etc/bootstrap
+      mode: 0644
+      contents:
+        inline: |
+          system_name=${system_name}
+          system_site=${system_site}
+          domain=${domain_root}
+          oci_registry=${oci_registry}
+          acme_url=https://acme.${system_name}.${domain_root}
+
+    # CoreWAF Root CA — baked into system trust store
+    - path: /etc/ssl/certs/corewaf-root-ca.pem
+      mode: 0644
+      contents:
+        inline: |
+          ${indent(10, root_ca_cert)}
+
+    # Docker registry TLS trust — Docker reads CA from this path
+    - path: /etc/docker/certs.d/${oci_registry}/ca.crt
+      mode: 0644
+      contents:
+        inline: |
+          ${indent(10, root_ca_cert)}
+
+    # ACME endpoint TLS trust
+    - path: /etc/docker/certs.d/acme.${system_name}.${domain_root}/ca.crt
+      mode: 0644
+      contents:
+        inline: |
+          ${indent(10, root_ca_cert)}
+
+    # Secrets manager TLS trust
+    - path: /etc/docker/certs.d/secman.${system_name}.${domain_root}/ca.crt
+      mode: 0644
+      contents:
+        inline: |
+          ${indent(10, root_ca_cert)}
+
+    # Re-provisioning script — triggers Ignition re-run on next reboot.
+    - path: /reprovision
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          touch /usr/share/oem/grub.cfg
+          sed -i "/linux_append systemd.machine_id=.*/d" /usr/share/oem/grub.cfg
+          echo "set linux_append=\"\$linux_append systemd.machine_id=$(cat /etc/machine-id)\"" >> /usr/share/oem/grub.cfg
+          touch /boot/flatcar/first_boot
+          echo "Ignition will re-run on next reboot."
+
+    # Volume mount config: scsi_unit:mountpoint:label:fstype
+    - path: /etc/volume-mounts.conf
+      mode: 0644
+      contents:
+        inline: |
+          # scsi_unit:mountpoint:label:fstype
+          1:/var/lib/docker:docker:ext4
+%{ for idx, size in data_disks ~}
+          ${idx + 2}:/mnt/data${idx}:data${idx}:ext4
+%{ endfor ~}
+
+    # Volume provisioning script
+    - path: /etc/corewaf/bin/provision-volumes.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+
+          CONFIG_FILE="/etc/volume-mounts.conf"
+          MAX_WAIT=120
+
+          log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2; }
+
+          find_disk_by_unit() {
+            local unit=$1
+            for bus in 0 1 2; do
+              for dev in /sys/bus/scsi/devices/$${bus}:0:$${unit}:0/block/*; do
+                [ -d "$dev" ] && basename "$dev" && return 0
+              done
+            done
+            return 1
+          }
+
+          wait_for_disk() {
+            local unit=$1 waited=0
+            log "Waiting for disk at SCSI unit $unit..."
+            while ! find_disk_by_unit "$unit" >/dev/null 2>&1 && [ $waited -lt $MAX_WAIT ]; do
+              sleep 2; waited=$((waited + 2))
+            done
+            if ! find_disk_by_unit "$unit" >/dev/null 2>&1; then
+              log "ERROR: Timeout waiting for disk at unit $unit"
+              return 1
+            fi
+            find_disk_by_unit "$unit"
+          }
+
+          log "Starting volume provisioning..."
+
+          wait_for_label() {
+            local label=$1 waited=0
+            log "Waiting for /dev/disk/by-label/$label to appear..."
+            while [ ! -e "/dev/disk/by-label/$label" ] && [ $waited -lt 30 ]; do
+              sleep 1; waited=$((waited + 1))
+            done
+            if [ ! -e "/dev/disk/by-label/$label" ]; then
+              log "WARN: /dev/disk/by-label/$label not present after 30s; forcing udev re-scan"
+              udevadm trigger --settle --action=change "/dev/$2" || true
+            fi
+            [ -e "/dev/disk/by-label/$label" ] || { log "ERROR: udev did not create /dev/disk/by-label/$label"; return 1; }
+            log "/dev/disk/by-label/$label is present"
+          }
+
+          while IFS=: read -r unit mount label fstype || [ -n "$unit" ]; do
+            [[ "$unit" =~ ^#.*$ ]] && continue
+            [[ -z "$unit" ]] && continue
+
+            log "Processing: unit=$unit mount=$mount label=$label fstype=$fstype"
+
+            disk=$(wait_for_disk "$unit") || continue
+
+            if blkid "/dev/$disk" &>/dev/null; then
+              log "/dev/$disk already formatted (label=$(blkid -s LABEL -o value /dev/$disk))"
+            else
+              log "Formatting /dev/$disk as $fstype with label $label"
+              mkfs.$fstype -L "$label" "/dev/$disk"
+            fi
+
+            # Ensure udev has finished processing so /dev/disk/by-label/$label exists.
+            # Without this, downstream var-lib-*.mount units fail because the
+            # by-label symlink is not yet created even though mkfs succeeded.
+            wait_for_label "$label" "$disk" || continue
+
+            mkdir -p "$mount"
+          done < "$CONFIG_FILE"
+
+          log "Volume provisioning complete"
+
+    # Script to start all compose stacks
+    - path: /etc/corewaf/bin/compose-up.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          # Scan /var/lib/docker/compose/ for compose stacks and start them.
+          # If a docker-compose.override.yml exists (registry image refs),
+          # pull fresh images and force-recreate. Otherwise use local images.
+          set -euo pipefail
+          COMPOSE_BASE="/var/lib/docker/compose"
+
+          # Wait for at least one compose stack
+          until ls "$COMPOSE_BASE"/*/docker-compose.yml >/dev/null 2>&1; do
+            echo "Waiting for compose stacks in $COMPOSE_BASE..."
+            sleep 5
+          done
+
+          for compose_file in "$COMPOSE_BASE"/*/docker-compose.yml; do
+            dir=$(dirname "$compose_file")
+            name=$(basename "$dir")
+            echo "Starting $name..."
+            cd "$dir"
+            docker compose down --remove-orphans 2>/dev/null || true
+
+            if [ -f docker-compose.override.yml ]; then
+              echo "  $name: override found — pulling from registry"
+              docker compose -f docker-compose.yml -f docker-compose.override.yml pull || \
+                echo "  $name: pull failed, using cached images"
+              docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --force-recreate
+            else
+              echo "  $name: using local images"
+              docker compose up -d
+            fi
+            echo "  $name: started"
+          done
+
+    # Install bootstrap artifacts: CD-ROM if present, else docker-fetch from the
+    # OCI registry (ref in /etc/bootstrap bootstrap_artifacts=). The registry payload
+    # is a plain scratch container image carrying sysext/ and bin/ trees.
+    - path: /etc/corewaf/bin/install-bootstrap.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          set -euo pipefail
+          CDROM="/mnt/cdrom"
+          SRC="" ; TMP="" ; CID=""
+          cleanup() {
+            [ -n "$CID" ] && docker rm -f "$CID" >/dev/null 2>&1 || true
+            [ -n "$TMP" ] && rm -rf "$TMP"
+            mountpoint -q "$CDROM" && umount "$CDROM" || true
+          }
+          trap cleanup EXIT
+
+          # Source 1: CD-ROM (filesystem-attached clouds / estate bootstrap)
+          if [ -e /dev/cdrom ]; then
+            mkdir -p "$CDROM"
+            mount -o ro /dev/cdrom "$CDROM" 2>/dev/null && SRC="$CDROM"
+          fi
+
+          # Source 2: OCI registry via docker (registry-backed deployments)
+          if [ -z "$SRC" ]; then
+            REF="$${BOOTSTRAP_ARTIFACTS_REF:-$(sed -n 's/^bootstrap_artifacts=//p' /etc/bootstrap 2>/dev/null | head -1)}"
+            if [ -z "$REF" ]; then
+              if [ -d /var/lib/corewaf/artifacts ]; then SRC=/var/lib/corewaf/artifacts; echo "Using cached bootstrap artifacts"
+              else echo "No bootstrap source (no CD-ROM, no bootstrap_artifacts=, no cache)"; exit 0; fi
+            fi
+          fi
+          if [ -z "$SRC" ]; then
+            echo "Fetching bootstrap artifacts: $REF"
+            ok=""
+            for i in $(seq 1 12); do
+              docker pull "$REF" && { ok=1; break; }
+              echo "pull attempt $i failed (registry/DNS may still be coming up) — retrying in 15s"
+              sleep 15
+            done
+            if [ -z "$ok" ]; then
+              [ -d /var/lib/corewaf/artifacts ] || { echo "pull failed and no cache" >&2; exit 1; }
+              SRC=/var/lib/corewaf/artifacts; echo "Pull failed — using cached bootstrap artifacts"
+            fi
+          fi
+          if [ -z "$SRC" ]; then
+            CID="$(docker create "$REF" /noop)"
+            TMP="$(mktemp -d)"
+            docker export "$CID" | tar -x -C "$TMP"
+            SRC="$TMP"
+          fi
+
+          # Install docker-compose sysext. NOTE: /opt is volatile on current Flatcar
+          # (sysext mounts a tmpfs over it), so persistent artifacts live under /var:
+          # sysext images in /var/lib/extensions (standard systemd location).
+          if [ -d "$SRC/sysext" ]; then
+            mkdir -p /var/lib/extensions
+            for f in "$SRC"/sysext/*.raw; do
+              [ -f "$f" ] || continue
+              cp "$f" "/var/lib/extensions/docker-compose.raw"
+              echo "Installed sysext: $(basename $f) -> /var/lib/extensions/docker-compose.raw"
+            done
+            systemd-sysext refresh
+          fi
+
+          # Helper binaries (e.g. registry credential helpers): /opt/bin is on PATH but
+          # volatile — this unit runs every boot and repopulates it from the artifacts.
+          if [ -d "$SRC/bin" ]; then
+            mkdir -p /opt/bin
+            for f in "$SRC"/bin/*; do
+              [ -f "$f" ] || continue
+              install -m 0755 "$f" /opt/bin/
+              echo "Installed bin: $(basename $f)"
+            done
+          fi
+
+          # First boots pull with a provision-time token (a credential helper cannot
+          # fetch itself). Once the ECR helper is installed and an AWS credential is
+          # present, switch docker auth to the durable helper form for the registry.
+          OCIREG="$(sed -n 's/^oci_registry=//p' /etc/bootstrap 2>/dev/null | head -1)"
+          if [ -n "$OCIREG" ] && [ -s /root/.aws/credentials ] && [ -x /opt/bin/docker-credential-ecr-login ]; then
+            printf '{"credHelpers": {"%s": "ecr-login"}}\n' "$OCIREG" > /root/.docker/config.json
+            echo "Docker auth switched to ecr-login helper for $OCIREG"
+          fi
+
+          # Cache the payload so later boots work without CD-ROM or registry
+          if [ "$SRC" != "/var/lib/corewaf/artifacts" ]; then
+            rm -rf /var/lib/corewaf/artifacts.tmp
+            mkdir -p /var/lib/corewaf/artifacts.tmp
+            cp -a "$SRC"/. /var/lib/corewaf/artifacts.tmp/ 2>/dev/null || true
+            rm -rf /var/lib/corewaf/artifacts
+            mv /var/lib/corewaf/artifacts.tmp /var/lib/corewaf/artifacts
+          fi
+
+  links:
+    # Fix resolv.conf — point to stub resolver so /etc/hosts is consulted.
+    - path: /etc/resolv.conf
+      target: /run/systemd/resolve/stub-resolv.conf
+      overwrite: true
+
+    # Enable docker.service directly (not via socket activation)
+    - path: /etc/systemd/system/multi-user.target.wants/docker.service
+      target: /usr/lib/systemd/system/docker.service
+      hard: false
+      overwrite: true
+
+systemd:
+  units:
+    # Preserve Ignition source in guestinfo so the /reprovision chain
+    # (touch /boot/flatcar/first_boot → reboot) has a config to re-read.
+    # Default Flatcar behaviour wipes guestinfo after first boot, which
+    # silently breaks re-provisioning and causes permanent terraform
+    # drift. Masking is safe here — no secrets ship via Ignition.
+    - name: ignition-delete-config.service
+      mask: true
+
+    # Ensure sysext merges extensions (Docker, containerd) into /usr
+    - name: systemd-sysext.service
+      enabled: true
+
+    # Make sshd a direct service (not via socket)
+    - name: sshd.service
+      enabled: true
+    - name: sshd.socket
+      mask: true
+
+    # Update system CA trust store (registers root CA before Docker starts)
+    - name: update-ca-certificates.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Update CA certificates
+        DefaultDependencies=no
+        Before=docker.service
+        After=systemd-sysext.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/sbin/update-ca-certificates
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Format all volumes
+    - name: provision-volumes.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Format attached volumes
+        DefaultDependencies=no
+        Before=var-lib-docker.mount${join("", [for idx, size in data_disks : " mnt-data${idx}.mount"])}
+        After=systemd-udevd.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/etc/corewaf/bin/provision-volumes.sh
+        StandardOutput=journal
+        StandardError=journal
+        TimeoutSec=600
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Mount Docker data volume by label
+    - name: var-lib-docker.mount
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Mount docker data volume
+        Requires=provision-volumes.service
+        After=provision-volumes.service
+
+        [Mount]
+        What=/dev/disk/by-label/docker
+        Where=/var/lib/docker
+        Type=ext4
+
+        [Install]
+        WantedBy=local-fs.target
+
+%{ for idx, size in data_disks ~}
+    # Mount data volume ${idx} by label
+    - name: mnt-data${idx}.mount
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Mount data${idx} volume
+        Requires=provision-volumes.service
+        After=provision-volumes.service
+
+        [Mount]
+        What=/dev/disk/by-label/data${idx}
+        Where=/mnt/data${idx}
+        Type=ext4
+
+        [Install]
+        WantedBy=local-fs.target
+
+%{ endfor ~}
+    # Fix /var/lib/docker permissions so docker group can traverse.
+    - name: fix-docker-perms.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Fix /var/lib/docker permissions for compose deploys
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/chgrp docker /var/lib/docker
+        ExecStart=/usr/bin/chmod 751 /var/lib/docker
+        ExecStart=/usr/bin/mkdir -p /var/lib/docker/compose
+        ExecStart=/usr/bin/chown core:core /var/lib/docker/compose
+        ExecStart=/usr/bin/chmod 770 /var/lib/docker/compose
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Docker depends on its volume being mounted + CA trust updated
+    - name: docker.service
+      enabled: true
+      dropins:
+        - name: 10-wait-docker.conf
+          contents: |
+            [Unit]
+            After=var-lib-docker.mount update-ca-certificates.service
+            Requires=var-lib-docker.mount
+
+    # Install bootstrap artifacts (CD-ROM or OCI registry) after Docker is ready
+    - name: install-bootstrap.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Install bootstrap artifacts (CD-ROM or OCI registry)
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/etc/corewaf/bin/install-bootstrap.sh
+
+        [Install]
+        WantedBy=multi-user.target
+
+    # Docker Compose stacks — auto-start on boot.
+    # Scans /var/lib/docker/compose/*/ for stacks, starts them.
+    # If docker-compose.override.yml exists, pulls from registry first.
+    - name: compose-stacks.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Docker Compose Stacks
+        After=docker.service network-online.target install-bootstrap.service
+        Requires=docker.service
+        Wants=network-online.target
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        TimeoutStartSec=0
+        ExecStart=/etc/corewaf/bin/compose-up.sh
+        ExecStop=/bin/bash -c 'for d in /var/lib/docker/compose/*/; do cd "$$d" && docker compose down 2>/dev/null; done'
+
+        [Install]
+        WantedBy=multi-user.target

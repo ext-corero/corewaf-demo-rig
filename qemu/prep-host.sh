@@ -48,3 +48,21 @@ H=""; for c in /usr/lib/qemu/qemu-bridge-helper /usr/libexec/qemu-bridge-helper;
 say "optional /etc/hosts block (browser access to *.rig.internal):"
 echo "  run: scripts/hosts-block.sh   # and paste the block with sudo"
 ok "prep done — next: qemu/rig-qemu up"
+
+say "flatcar render toolchain (terraform + poseidon/ct offline mirror)"
+TF_VER=1.9.8; CT_VER=0.13.0
+mkdir -p "$HOME/.local/bin" "$HOME/.local/share/terraform/mirror/registry.terraform.io/poseidon/ct"
+if ! [[ -x "$HOME/.local/bin/terraform" ]]; then
+  t=$(mktemp -d)
+  curl -fsSL -o "$t/tf.zip" "https://releases.hashicorp.com/terraform/${TF_VER}/terraform_${TF_VER}_linux_amd64.zip"
+  echo "186e0145f5e5f2eb97cbd785bc78f21bae4ef15119349f6ad4fa535b83b10df8  $t/tf.zip" | sha256sum -c - >/dev/null
+  ( cd "$t" && unzip -qo tf.zip terraform && install -m755 terraform "$HOME/.local/bin/" ); rm -rf "$t"
+fi
+m="$HOME/.local/share/terraform/mirror/registry.terraform.io/poseidon/ct"
+if ! ls "$m"/terraform-provider-ct_${CT_VER}_linux_amd64.zip >/dev/null 2>&1; then
+  curl -fsSL -o "$m/terraform-provider-ct_${CT_VER}_linux_amd64.zip" \
+    "https://github.com/poseidon/terraform-provider-ct/releases/download/v${CT_VER}/terraform-provider-ct_${CT_VER}_linux_amd64.zip"
+  echo "24d86adcba92ad0f13870d5e0d217c395aa90ff1e9234fe0c9b7c6eb65abb3a8  $m/terraform-provider-ct_${CT_VER}_linux_amd64.zip" | sha256sum -c - >/dev/null
+fi
+[[ -f "$HOME/.local/share/terraform/rig.tfrc" ]] || printf 'provider_installation {\n  filesystem_mirror {\n    path = "%s/.local/share/terraform/mirror"\n  }\n}\n' "$HOME" > "$HOME/.local/share/terraform/rig.tfrc"
+ok "terraform ${TF_VER} + ct ${CT_VER} mirrored under ~/.local (env.sh exports TF_CLI_CONFIG_FILE)"

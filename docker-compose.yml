@@ -8,7 +8,7 @@
 name: corewaf-demo-rig
 
 x-node: &node
-  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
+  image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-6f0babc}
   build: ./node
   init: true
   restart: unless-stopped
@@ -18,6 +18,8 @@ x-node: &node
   env_file: [inventory.env, images.env]
   environment:
     RIG_MODE: ${RIG_MODE:-pull}
+    RIG_OS: ${RIG_OS:-flatcar}
+    RIG_BOOTSTRAP_CARRIER: ${RIG_BOOTSTRAP_CARRIER:-}
   volumes:
     - rig-base:/rig/base:ro
     - rig-ca:/rig/ca:ro
@@ -36,12 +38,13 @@ x-node: &node
 
 services:
   rig-init:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-6f0babc}
     build: ./node
     command: rig-init
     restart: "no"
     env_file: [inventory.env, images.env]
     environment:
+      RIG_OS: ${RIG_OS:-flatcar}
       AWS_PROFILE: ${AWS_PROFILE:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -64,6 +67,8 @@ services:
       RAM_MB: ${RIG_APP_RAM_MB:-4096}
       VCPUS: ${RIG_APP_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_APP_MAC:-52:54:00:96:00:0a}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -86,6 +91,8 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_DNS_1_MAC:-52:54:00:96:00:15}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -100,6 +107,8 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_DNS_2_MAC:-52:54:00:96:00:16}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -114,6 +123,8 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_GW_1_MAC:-52:54:00:96:00:1f}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -128,6 +139,8 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_GW_2_MAC:-52:54:00:96:00:20}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -142,6 +155,8 @@ services:
       RAM_MB: ${RIG_OBS_RAM_MB:-4096}
       VCPUS: ${RIG_OBS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-flatcar}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_OBS_1_MAC:-52:54:00:96:00:28}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -217,11 +232,13 @@ services:
     ports: ["${RIG_BACKSTAGE_PORT:-27007}:7007"]
 
   cli:
-    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-979b2a8}
+    image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-6f0babc}
     build: ./node
     profiles: [tools]
     command: cli
     env_file: [inventory.env, images.env]
+    environment:
+      RIG_OS: "${RIG_OS:-flatcar}"
     networks: [rig]
     # resolve *.rig.internal the way the guests do: via the rig's dns VMs
     dns: ["${RIG_DNS_1_IP:-192.168.150.21}", "${RIG_DNS_2_IP:-192.168.150.22}"]
