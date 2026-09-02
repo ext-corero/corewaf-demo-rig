@@ -3,7 +3,7 @@
 name: node-image
 on:
   push:
-    branches: [main, feature/flatcar-v0]
+    branches: [main, feature/flatcar-v0, feature/orchestrator-v0, feature/service-templates-v0]
     paths: ["node/**", ".github/workflows/node-image.yml"]
   workflow_dispatch: {}
 env:

@@ -3,7 +3,7 @@
 name: launcher-image
 on:
   push:
-    branches: [main]
+    branches: [main, feature/service-templates-v0]
     paths: ["launcher/**", ".github/workflows/launcher-image.yml"]
   workflow_dispatch:
     inputs:
