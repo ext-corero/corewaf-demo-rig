@@ -100,7 +100,7 @@ kvm_check() { docker run --rm --device /dev/kvm alpine:3.23 test -w /dev/kvm >/d
 wait_healthy() {   # all infra node containers healthy (first boot can take ~10 min)
     local want=6 n=0 t=0; [[ "${RIG_SIZE:-full}" == minimal ]] && want=4
     printf '  waiting for the VMs to come up (stacks start inside the guests)'
-    while (( t < 1200 )); do n="$(docker ps --filter name=rig- --filter health=healthy -q | wc -l)"; (( n >= want )) && { echo " ok ($n/$want)"; return 0; }; printf .; sleep 15; t=$((t+15)); done
+    while (( t < 1200 )); do n="$(docker ps --filter health=healthy --format '{{.Names}}' | grep -cE '^rig-(app|dns|gw|obs)-' || true)"; (( n >= want )) && { echo " ok ($n/$want)"; return 0; }; printf .; sleep 15; t=$((t+15)); done
     echo; warn "only $n/$want nodes healthy after 20 min — check: rig-launcher status / logs <node>"
 }
 wait_api() {       # the rig API must answer before minting tokens
