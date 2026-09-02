@@ -256,7 +256,9 @@ functional goals ahead are organized as three tracks (this section is the living
    forwarded through an enrolled WAAP kit to a demo origin, preferably exercising the
    curated demo data from track 2 — dashboards moving, attacks blocked, the full
    story. *Deliberately deferred*: it needs focused attention and a newer release of
-   the API before the rig can wire it.
+   the API before the rig can wire it. **The origin is already in place**: OWASP
+   Juice Shop runs as a container on the app VM (`juice.rig.internal:3000`),
+   reachable from the kit VMs only — no host exposure.
 
 Beyond the demo tracks, the rig's second job is **development**: the first feature to
 be homologated and integrated on the rig is the **orchestrator** — which is also when
