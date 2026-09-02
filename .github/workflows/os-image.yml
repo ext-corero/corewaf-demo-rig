@@ -43,12 +43,13 @@ jobs:
           set -euo pipefail
           BASE="https://stable.release.flatcar-linux.net/amd64-usr/${{ steps.pins.outputs.version }}"
           curl -fsSL -O "$BASE/flatcar_production_qemu_image.img" \
-                     -O "$BASE/flatcar_production_qemu_image.img.DIGESTS" \
                      -O "$BASE/flatcar_production_qemu_image.img.DIGESTS.asc"
           curl -fsSL https://www.flatcar.org/security/image-signing-key/Flatcar_Image_Signing_Key.asc | gpg --import
-          gpg --verify flatcar_production_qemu_image.img.DIGESTS.asc flatcar_production_qemu_image.img.DIGESTS
+          # .DIGESTS.asc is CLEARSIGNED (digests inline), not a detached signature
+          gpg --verify flatcar_production_qemu_image.img.DIGESTS.asc
+          gpg --output digests.txt --decrypt flatcar_production_qemu_image.img.DIGESTS.asc 2>/dev/null
           awk 'length($1)==128 && $2 ~ /qemu_image.img$/ {print $1"  flatcar_production_qemu_image.img"}' \
-            flatcar_production_qemu_image.img.DIGESTS | sha512sum -c -
+            digests.txt | sha512sum -c -
           # customize stage: intentionally EMPTY — stock image, A/B update path preserved
           mv flatcar_production_qemu_image.img "flatcar-qemu-${{ steps.pins.outputs.version }}.qcow2"
       - name: Install oras
