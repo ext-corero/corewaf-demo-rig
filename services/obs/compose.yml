@@ -77,7 +77,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
-      GF_SERVER_ROOT_URL: "http://obs-1.rig.internal:3000/"
+      GF_SERVER_ROOT_URL: "http://${FQDN}:3000/"
     networks: [ obs ]
     ports:
       - "3000:3000"
