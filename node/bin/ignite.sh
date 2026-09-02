@@ -106,6 +106,9 @@ dns_upstream=${RIG_DNS_UPSTREAM:-8.8.8.8}
 # service bundles at Step 2) home here — sibling of system_ns (code images)
 deployment_ns=io.corewaf.ghcr/deployments/rig-demo
 release=0.0.1
+# caps convenience keys, written VERBATIM by this generator (the orchestrator
+# defines/renames nothing in code — the bootstrap file is the truth)
+CS_DOMAIN=$RIG_DOMAIN
 # platform data namespaces (tenant/etcd scoping)
 namespace=corero-core
 namespaces=[\"corero-core\",\"corero-system\"]"
