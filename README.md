@@ -265,8 +265,10 @@ the legacy compose path until the flip).
   etcd state (and the demo data) resets: run `rig seed` after the first
   orchestrator bring-up. Flip ALL nodes before seeding (a still-running
   legacy gateway re-registers into the fresh etcd and the new gateway then
-  refuses the name — recovery: `etcdctl del --prefix
-  /corero-core/system/tunnel-gateways/` on the app node and let it retry).
+  refuses the name; the same happens to dns-bridges and secrets-managers —
+  recovery: `etcdctl del --prefix /corero-core/system/<kind>/` (tunnel-gateways,
+  dns-bridges/<stale-id>, secrets-managers) on the app node's etcd; each
+  service re-registers within its retry loop, ~15-45s).
   Re-enrol kits afterwards with a FULL purge first (`docker ps -aq --filter
   name=corewaf- | xargs docker rm -f` + `rm -rf /var/lib/tunnel/*` — the
   netns container holds old wg routes); the rejoin lands in the designed
