@@ -123,7 +123,7 @@ case "$cmd" in
           wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
   verify) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" cli rig verify ;;
-  ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" cli rig "$cmd" "$@" ;;
+  seed|ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T -e RIG_REDUNDANCY="${RIG_REDUNDANCY:-1}" -e RIG_OBS="${RIG_OBS:-1}" cli rig "$cmd" "$@" ;;
   kit)    ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true

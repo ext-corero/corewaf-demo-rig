@@ -110,6 +110,12 @@ case "${1:-}" in
   logs)   shift; cmd_logs "$@" ;;
   exec)   shift; cmd_exec "$@" ;;
   mint)   shift; cmd_mint "$@" ;;
+  seed)   # load the curated demo dataset (tenants/zones/secrets/policies), the
+          # fleet queue, and (unless NO_CRS=1) the OWASP CRS families
+          sd="$(guest_sudo_for app-1)"
+          gssh app-1 "$sd docker exec rig2-waf-api python /app/demo/load.py --base http://localhost --quiet" || exit 1
+          gssh app-1 "$sd docker exec rig2-waf-api python /app/demo/seed_fleet.py" | tail -2
+          [[ "${NO_CRS:-0}" == 1 ]] || gssh app-1 "$sd docker exec rig2-waf-api python /app/demo/seed_crs.py" | tail -2 ;;
   ssh)    shift; n="$1"; shift; gssh "$n" "$@" ;;
   help)   sed -n '2,12p' "$0" ;;
   *) sed -n '2,12p' "$0"; exit 2 ;;

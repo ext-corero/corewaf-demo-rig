@@ -196,6 +196,8 @@ export default function App() {
         </span></Tooltip>
         <Tooltip title="Full health checklist, run inside the rig network"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('verify')}>Verify</Button>
+          <Tooltip title="load the curated demo data: tenants, zones, secrets, policies, fleet queue, CRS rules — idempotent"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('seed')}>Seed demo</Button></span></Tooltip>
         </span></Tooltip>
         <Tooltip title="Add a WAAP kit — automated enrolment, or staged for a manual in-VM demo"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>

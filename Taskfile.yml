@@ -72,8 +72,8 @@ tasks:
     cmds: ['{{.DC}} exec {{.NODE}} vm-stack']
 
   seed:
-    desc: Load the demo dataset into the rig
-    cmds: ['{{.DC}} exec -T app-1 vm-ssh "doas docker exec rig2-waf-api python /app/demo/load.py --base http://localhost"']
+    desc: Load the demo data (dataset + fleet queue + CRS; NO_CRS=1 to skip CRS)
+    cmds: ['{{.DC}} --profile tools run --rm -T -e RIG_REDUNDANCY -e RIG_OBS -e NO_CRS cli rig seed']
 
   kit:up:
     desc: 'Boot + stage + mint + enrol a kit in one go (NAME=demo|a|b) — same as kit.sh'
