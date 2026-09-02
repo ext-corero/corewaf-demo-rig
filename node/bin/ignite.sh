@@ -84,7 +84,12 @@ bootstrap="NODE_NAME=$short
 FQDN=$NODE_FQDN
 ZONE=$RIG_DOMAIN
 NODE_IP=$NODE_IP"
-[[ -n "${RIG_HTTP_PORT:-}" ]] && bootstrap+=$'\n'"RIG_HTTP_PORT=$RIG_HTTP_PORT"
+if [[ -n "${RIG_HTTP_PORT:-}" ]]; then
+    bootstrap+=$'\n'"RIG_HTTP_PORT=$RIG_HTTP_PORT"
+    bootstrap+=$'\n'"PUBLIC_API_HOST=app-1.localhost:$RIG_HTTP_PORT"
+else
+    bootstrap+=$'\n'"PUBLIC_API_HOST=app-1.$RIG_DOMAIN:8080"
+fi
 if [[ "$ROLE" == gw ]]; then
     cidr="$(node_var IPAM_CIDR)"; addr="$(node_var WG_ADDR)"
     [[ -n "$cidr" ]] && bootstrap+=$'\n'"IPAM_CIDR=$cidr"

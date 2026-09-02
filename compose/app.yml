@@ -159,7 +159,9 @@ services:
       waf-api: { condition: service_healthy }
     environment:
       # Browser-side API address: *.localhost + the published host port (no hosts file).
-      PUBLIC_API_HOST: "app-1.localhost:${RIG_HTTP_PORT:-28080}"
+      # model-driven: /etc/corewaf-bootstrap sets PUBLIC_API_HOST (docker models:
+      # app-1.localhost:<port>; bridge/cloud models: app-1.<zone>:8080)
+      PUBLIC_API_HOST: "${PUBLIC_API_HOST:-app-1.localhost:${RIG_HTTP_PORT:-28080}}"
       # The operator's browser cannot reach the dns VMs; let the GUI server proxy
       # the DNS-bridge detail calls (GUI feature flag, default direct).
       PUBLIC_DNS_BRIDGE_ACCESS: proxy
