@@ -234,7 +234,8 @@ services:
       rig:
         ipv4_address: ${RIG_JUICE_IP:-192.168.150.50}
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/rest/admin/application-version', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
+      # the image is distroless — node is at /nodejs/bin/node, nothing on $PATH
+      test: ["CMD", "/nodejs/bin/node", "-e", "require('http').get('http://localhost:3000/rest/admin/application-version', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 10
