@@ -27,17 +27,18 @@ if [[ "${RIG_LAUNCH:-compose}" == orchestrator ]]; then
     [[ -n "$tok" ]] || die "cannot obtain an ECR token (reg_token / $AUTH_DIR/docker-config.json)"
     # Warm-flip hygiene: the legacy projects hold the published ports.
     vm-ssh "$GUEST_SUDO sh -c 'for p in compose obs-rig secrets-rig; do docker compose -p \$p down --remove-orphans >/dev/null 2>&1 || true; done'" || true
-    # Stage service dirs onto the nodestate share (host-side; the guest sees them
-    # rw at /opt/rig-state/services via 9p). Fresh copy each run so deleted files
-    # don't linger and renders start clean; picks up the git-ignored
-    # compose.override.yml dev pin. share/ready is untouched.
-    rm -rf "$STATE_DIR/share/services"
-    mkdir -p "$STATE_DIR/share/services"
     rc=0
     while IFS= read -r svc; do
         [[ -z "$svc" || "$svc" == \#* ]] && continue
         log "orchestrator compose up: $svc"
-        cp -a "$V2_DIR/services/$svc" "$STATE_DIR/share/services/"
+        # Stage the service dir onto the nodestate share GUEST-side (rw at
+        # /opt/rig-state via 9p; host sees it under $STATE_DIR/share/services).
+        # Fresh copy each run; guest-side keeps the 9p dentry cache coherent
+        # (a host-side rm+recreate under the live mount yields phantom EEXIST
+        # on the orchestrator's later mkdir). Picks up the git-ignored
+        # compose.override.yml dev pin. share/ready is untouched.
+        vm-ssh "$GUEST_SUDO sh -c 'rm -rf /opt/rig-state/services/$svc && mkdir -p /opt/rig-state/services && cp -r --no-preserve=ownership /opt/v2/services/$svc /opt/rig-state/services/'" </dev/null \
+            || { rc=$?; log "staging $svc failed (rc=$rc)"; break; }
         if [[ "$svc" == dns ]]; then
             # Dev-path env-asset fill: compose up skips asset staging (attested-only),
             # so seed the dns-seed volume here. Step 2's attested run pulls the real
