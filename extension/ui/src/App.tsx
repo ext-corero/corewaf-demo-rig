@@ -47,6 +47,7 @@ export default function App() {
   const [image, setImage] = useState(() => load(`rig.image.${CHANNEL}`, DEFAULT_IMAGE));
   const [guiPortCfg, setGuiPortCfg] = useState(() => load('rig.httpPort', '28080'));
   const [grafanaPortCfg, setGrafanaPortCfg] = useState(() => load('rig.grafanaPort', '23000'));
+  const [size, setSize] = useState(() => load('rig.size', 'full'));
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState('');
@@ -60,6 +61,7 @@ export default function App() {
   useEffect(() => save(`rig.image.${CHANNEL}`, image), [image]);
   useEffect(() => save('rig.httpPort', guiPortCfg), [guiPortCfg]);
   useEffect(() => save('rig.grafanaPort', grafanaPortCfg), [grafanaPortCfg]);
+  useEffect(() => save('rig.size', size), [size]);
 
   const refresh = useCallback(async () => {
     try {
@@ -98,7 +100,8 @@ export default function App() {
   const guiPort = guiPortCfg || '28080';
   const grafanaPort = grafanaPortCfg || '23000';
   const appHealthy = rows.find((r) => r.name === 'rig-app-1')?.health === 'healthy';
-  const infraUp = NODES.filter((n) => rows.find((r) => r.name === `rig-${n}`)?.health === 'healthy').length;
+  const activeNodes = size === 'minimal' ? NODES.filter((n) => !['dns-2', 'gw-2'].includes(n)) : NODES;
+  const infraUp = activeNodes.filter((n) => rows.find((r) => r.name === `rig-${n}`)?.health === 'healthy').length;
   const kitStates = Object.fromEntries(
     KITS.map((k) => [k, rows.find((r) => r.name === `rig-kit-${k}`)?.health || rows.find((r) => r.name === `rig-kit-${k}`)?.state || '']),
   );
@@ -108,7 +111,7 @@ export default function App() {
     setBusy(verb);
     setLog((l) => `${l}\n$ corewaf-rig ${verb} ${args.join(' ')}\n`);
     let captured = '';
-    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`];
+    const envArgs = [`RIG_HTTP_PORT=${guiPortCfg || '28080'}`, `RIG_GRAFANA_PORT=${grafanaPortCfg || '23000'}`, `RIG_SIZE=${size}`];
     ddClient.extension.host?.cli.exec('corewaf-rig', [profile, image, verb, ...envArgs, ...args], {
       stream: {
         onOutput: (d) => {
@@ -171,6 +174,11 @@ export default function App() {
         <TextField size="small" label="AWS profile" value={profile} onChange={(e) => setProfile(e.target.value.trim())} sx={{ width: 200 }} />
         <TextField size="small" label="GUI port" value={guiPortCfg} onChange={(e) => setGuiPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
         <TextField size="small" label="Grafana port" value={grafanaPortCfg} onChange={(e) => setGrafanaPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
+        <TextField size="small" select SelectProps={{ native: true }} label="System size" value={size} onChange={(e) => setSize(e.target.value)} sx={{ width: 220 }}
+          helperText={size === 'minimal' ? 'no dns-2/gw-2, no Backstage — saves 2 VMs' : 'full topology incl. redundancy'}>
+          <option value="full">Full (redundancy)</option>
+          <option value="minimal">Minimal (saves 2 VMs)</option>
+        </TextField>
         <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
       </Stack>
 
@@ -212,7 +220,7 @@ export default function App() {
       <Divider />
       <Box>
         <Stack direction="row" spacing={1} alignItems="baseline">
-          <Typography variant="subtitle1">Nodes ({infraUp}/{NODES.length} healthy)</Typography>
+          <Typography variant="subtitle1">Nodes ({infraUp}/{activeNodes.length} healthy)</Typography>
           <Typography variant="caption" color="text.secondary">— click a node → its terminal (Exec tab): a status printout, then a prompt; <code>vm-ssh</code> enters the VM</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>

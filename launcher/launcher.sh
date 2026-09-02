@@ -48,7 +48,7 @@ if [[ "${RIG_LAUNCHER_INNER:-0}" != 1 ]]; then
     TTY=""; [[ -t 0 && -t 1 ]] && TTY="-it"
     exec docker run --rm $TTY -v /var/run/docker.sock:/var/run/docker.sock -v "$VOL:$DIR" \
         -e RIG_LAUNCHER_INNER=1 -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
-        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_BOOTSTRAP_CARRIER -e LAUNCHER_IMAGE="$IMG" \
+        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_BOOTSTRAP_CARRIER -e RIG_SIZE -e LAUNCHER_IMAGE="$IMG" \
         "$IMG" "$cmd" "$@"
 fi
 ensure_repo() {
@@ -98,7 +98,8 @@ pick_ports() {
 }
 kvm_check() { docker run --rm --device /dev/kvm alpine:3.23 test -w /dev/kvm >/dev/null 2>&1 && ok "/dev/kvm usable from containers" || fail "KVM not available to containers (Windows: .wslconfig [wsl2] nestedVirtualization=true, then wsl --shutdown)"; }
 wait_healthy() {   # all infra node containers healthy (first boot can take ~10 min)
-    local want=6 n=0 t=0; printf '  waiting for the VMs to come up (stacks start inside the guests)'
+    local want=6 n=0 t=0; [[ "${RIG_SIZE:-full}" == minimal ]] && want=4
+    printf '  waiting for the VMs to come up (stacks start inside the guests)'
     while (( t < 1200 )); do n="$(docker ps --filter name=rig- --filter health=healthy -q | wc -l)"; (( n >= want )) && { echo " ok ($n/$want)"; return 0; }; printf .; sleep 15; t=$((t+15)); done
     echo; warn "only $n/$want nodes healthy after 20 min — check: rig-launcher status / logs <node>"
 }
@@ -110,10 +111,19 @@ urls() { local h g; h="$(sed -n 's/^RIG_HTTP_PORT=//p' .env)"; g="$(sed -n 's/^R
 
 case "$cmd" in
   up)     step "rig-launcher up"; ensure_repo; kvm_check; aws_env; registry_login; pick_ports
-          step "docker compose up -d"; set -a; . .env; [ -f images.env ] && . images.env; set +a; compose up -d; wait_healthy; echo; urls ;;
+          step "docker compose up -d (${RIG_SIZE:-full})"; set -a; . .env; [ -f images.env ] && . images.env; set +a
+          if [[ "${RIG_SIZE:-full}" == minimal ]]; then
+              # Track 1 (modularity): no redundancy — skip dns-2/gw-2, and no Backstage
+              compose rm -sf dns-2 gw-2 >/dev/null 2>&1 || true
+              docker rm -f rig-backstage >/dev/null 2>&1 || true
+              compose up -d app-1 dns-1 gw-1 obs-1
+          else
+              compose up -d
+          fi
+          wait_healthy; echo; urls ;;
   status) ensure_repo; compose --profile kit ps ;;
-  verify) ensure_repo; compose --profile tools run --rm -T cli rig verify ;;
-  ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T cli rig "$cmd" "$@" ;;
+  verify) ensure_repo; compose --profile tools run --rm -T -e RIG_SIZE="${RIG_SIZE:-full}" cli rig verify ;;
+  ps|stat|logs|exec) ensure_repo; compose --profile tools run --rm -T -e RIG_SIZE="${RIG_SIZE:-full}" cli rig "$cmd" "$@" ;;
   kit)    ensure_repo; aws_env; registry_login; set -a; . .env; [ -f images.env ] && . images.env; set +a
           NAME="${1:-demo}"; SVC="kit-$NAME"; step "kit $NAME"
           docker inspect "rig-$SVC" >/dev/null 2>&1 || docker network disconnect -f corewaf-rig "rig-$SVC" >/dev/null 2>&1 || true

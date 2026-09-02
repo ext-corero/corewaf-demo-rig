@@ -23,7 +23,7 @@ cmd_verify() {
     warn() { printf '  \e[33m~\e[0m %s\n' "$*"; }
     code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
     echo "== guests (ssh) + containers =="
-    for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1; do
+    for n in $INFRA_NODES; do
         out=$(gssh "$n" "$(guest_sudo_for "$n") docker ps -a --format '{{.Names}} {{.Status}}'" 2>/dev/null) || { bad "$n: ssh unreachable ($(ip_of "$n"))"; continue; }
         [[ -z "$out" ]] && { bad "$n: no containers"; continue; }
         while read -r cname cstatus; do
@@ -35,13 +35,16 @@ cmd_verify() {
     [[ $(code "$API/health") == 200 ]] && ok "API  $API/health" || bad "API  $API/health"
     [[ $(code "http://gui-1.$RIG_DOMAIN:8080/") == 200 ]] && ok "GUI  http://gui-1.$RIG_DOMAIN:8080" || bad "GUI  http://gui-1.$RIG_DOMAIN:8080"
     [[ $(code "http://$RIG_OBS_1_IP:3000/api/health") == 200 ]] && ok "Grafana $RIG_OBS_1_IP:3000" || bad "Grafana $RIG_OBS_1_IP:3000"
-    for gw in "$RIG_GW_1_FQDN:$RIG_GW_1_IP" "$RIG_GW_2_FQDN:$RIG_GW_2_IP"; do f=${gw%%:*}; ip=${gw##*:}
+    gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP $RIG_GW_2_FQDN:$RIG_GW_2_IP"
+    [[ "${RIG_SIZE:-full}" == minimal ]] && gwlist="$RIG_GW_1_FQDN:$RIG_GW_1_IP"
+    for gw in $gwlist; do f=${gw%%:*}; ip=${gw##*:}
         [[ $(code --cacert "$CA_DIR/root_ca.crt" --resolve "$f:443:$ip" "https://$f/health") == 200 ]] && ok "edge https://$f/health (valid cert)" || bad "edge https://$f/health"; done
     echo "== dns plane =="
-    for ns in $RIG_RESOLVERS; do a=$(dig +short +time=2 +tries=1 "@$ns" "$RIG_APP_FQDN" 2>/dev/null | head -1); [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"; done
+    resolvers_check="$RIG_RESOLVERS"; [[ "${RIG_SIZE:-full}" == minimal ]] && resolvers_check="$RIG_DNS_1_IP"
+    for ns in $resolvers_check; do a=$(dig +short +time=2 +tries=1 "@$ns" "$RIG_APP_FQDN" 2>/dev/null | head -1); [[ "$a" == "$RIG_APP_IP" ]] && ok "$ns resolves $RIG_APP_FQDN" || bad "$ns does not resolve $RIG_APP_FQDN"; done
     gssh app-1 'ping -c1 -W2 8.8.8.8 >/dev/null 2>&1' && ok "guest egress" || bad "guest egress (docker NAT)"
     echo "== gateways: WG peers =="
-    for n in gw-1 gw-2; do sd="$(guest_sudo_for "$n")"; wg="$sd wg show"; [[ "$sd" == sudo ]] && wg="$sd docker exec rig2-tunnel-gateway wg show"; c=$(gssh "$n" "$wg 2>/dev/null | grep -c 'latest handshake'" 2>/dev/null | head -1); c=${c:-0}; [[ "$c" -gt 0 ]] && ok "$n: $c peer(s) with a handshake" || warn "$n: no active peers"; done
+    for n in $GW_NODES; do sd="$(guest_sudo_for "$n")"; wg="$sd wg show"; [[ "$sd" == sudo ]] && wg="$sd docker exec rig2-tunnel-gateway wg show"; c=$(gssh "$n" "$wg 2>/dev/null | grep -c 'latest handshake'" 2>/dev/null | head -1); c=${c:-0}; [[ "$c" -gt 0 ]] && ok "$n: $c peer(s) with a handshake" || warn "$n: no active peers"; done
     echo "== registered WAF instances =="
     curl -s --max-time 5 -H 'X-Scope-OrgID: corero-system-owner' "$API/caddys/api/v1/namespaces/corero-core/caddy/instances" \
       | jq -r --arg now "$(date -u +%s)" '.instances[]? | .instance | "  \(.metadata.name[0:8])  \(.status.phase // "?")  lastSeen \(if .status.lastSeen then (($now|tonumber) - (.status.lastSeen | sub("\\.[0-9]+";"") | sub("\\+00:00";"Z") | fromdateiso8601)) | tostring + "s ago" else "never" end)"' 2>/dev/null || warn "could not list instances"
@@ -50,6 +53,8 @@ cmd_verify() {
 # column(1) is not in the node image; align tab-separated rows with awk
 align() { awk -F'\t' '{for(i=1;i<=NF;i++){d[NR,i]=$i;if(length($i)>w[i])w[i]=length($i)}n=NR}END{for(r=1;r<=n;r++){for(i=1;i<=NF;i++)printf "%-"w[i]"s%s",d[r,i],(i==NF?"":"  ");print ""}}'; }
 INFRA_NODES="app-1 dns-1 dns-2 gw-1 gw-2 obs-1"
+GW_NODES="gw-1 gw-2"
+if [[ "${RIG_SIZE:-full}" == minimal ]]; then INFRA_NODES="app-1 dns-1 gw-1 obs-1"; GW_NODES="gw-1"; fi
 KIT_NODES="kit-demo kit-a kit-b"
 # node selection for ps/stat: explicit args, or all infra + kits that answer ssh
 select_nodes() {
