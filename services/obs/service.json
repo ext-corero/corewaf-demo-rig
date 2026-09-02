@@ -9,7 +9,15 @@
       "IMAGE_LOKI": "grafana/loki:3.1.1",
       "IMAGE_MIMIR": "grafana/mimir:2.13.0",
       "IMAGE_ALERTMANAGER": "prom/alertmanager:v0.27.0",
-      "IMAGE_GRAFANA": "grafana/grafana:11.2.0"
-    }
+      "IMAGE_GRAFANA": "grafana/grafana:11.2.0",
+      "ACME_EMAIL": "rig@local",
+      "GRAFANA_LOCAL_ALIAS": "grafana.localhost"
+    },
+    "templates": [
+      { "source": "templates/Caddyfile.obs.fragment", "destination": "config/Caddyfile.obs.fragment", "overwrite": true }
+    ],
+    "files": [ "service.json", "compose.yml", "templates/Caddyfile.obs.fragment",
+               "config/loki.yaml", "config/mimir.yaml", "config/alertmanager.yml",
+               "config/grafana/datasources.yaml" ]
   }
 }

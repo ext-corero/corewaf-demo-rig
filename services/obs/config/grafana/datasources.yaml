@@ -1,0 +1,19 @@
+# demo rig — Grafana datasource provisioning. Mimir (Prometheus-compatible
+# query API at /prometheus) as the default metrics source, Loki for logs. Both
+# resolved on the obs-rig docker network by service name.
+apiVersion: 1
+
+datasources:
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    url: http://mimir:9009/prometheus
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      prometheusType: Mimir
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100

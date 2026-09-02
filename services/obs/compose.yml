@@ -26,7 +26,7 @@ services:
     ports:
       - "3100:3100"
     volumes:
-      - /opt/v2/config/obs/loki.yaml:/etc/loki/loki.yaml:ro
+      - /opt/rig-state/services/obs/config/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:3100/ready || exit 1"]
@@ -45,7 +45,7 @@ services:
     ports:
       - "9009:9009"
     volumes:
-      - /opt/v2/config/obs/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - /opt/rig-state/services/obs/config/mimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir-data:/data
     # No healthcheck: distroless image (externally probeable at :9009/ready).
 
@@ -61,7 +61,7 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - /opt/v2/config/obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /opt/rig-state/services/obs/config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
 
   grafana:
@@ -82,7 +82,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - /opt/v2/config/obs/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - /opt/rig-state/services/obs/config/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - grafana-data:/var/lib/grafana
 
   # caddy-obs — HTTPS/SNI front (certs via ACME from the app VM's step-ca).
@@ -106,6 +106,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${root_ca_cert}:/etc/ssl/rigca/root.crt:ro
-      - /opt/v2/config/Caddyfile.obs.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - /opt/rig-state/services/obs/config/Caddyfile.obs.fragment:/etc/caddy/Caddyfile.fragment:ro
       - caddy-obs-data:/data
     networks: [ obs ]
