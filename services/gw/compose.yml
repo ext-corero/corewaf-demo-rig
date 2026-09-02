@@ -1,0 +1,149 @@
+# demo rig — GW stack (per gw VM). Ported from compose/gw.yml (orchestrator path).
+# hostname/identity come from /etc/bootstrap (NODE_NAME/FQDN/WG_ADDR/IPAM_CIDR)
+# via the orchestrator env; env_file rides ${COREWAF_BOOTSTRAP}.
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  edge:
+    name: edge-rig
+    driver: bridge
+    # Pinned subnet so the authorizing-proxy DNAT target (the edge's container
+    # IP below) is stable across recreates.
+    ipam:
+      config:
+        - subnet: 172.31.40.0/24
+
+volumes:
+  gw-local-secrets:     # WG server keypair + per-kit ZTKs (gateway is sole writer)
+  gw-runtime-state:
+  gw-wg-state:
+  caddy-edge-data:
+
+services:
+  # Keypair-gen ONLY (no etcd). Seeds the WG server private key locally.
+  wg-keypair-gen:
+    image: ${IMAGE_TUNNEL_GATEWAY}
+    container_name: rig2-wg-keypair-gen
+    logging: *x-default-logging
+    restart: on-failure
+    environment:
+      SECRET_NAME: ${NODE_NAME}-wg-keypair
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        f="/secrets/$${SECRET_NAME}" &&
+        if [ ! -f "$$f" ]; then wg genkey | tr -d '\n' > "$$f"; chmod 600 "$$f";
+        echo "generated $$f"; else echo "$$f exists"; fi
+    volumes:
+      - gw-local-secrets:/secrets
+    networks: [ edge ]
+
+  tunnel-gateway:
+    image: ${IMAGE_TUNNEL_GATEWAY}
+    container_name: rig2-tunnel-gateway
+    logging: *x-default-logging
+    restart: unless-stopped       # self-assembly: retry until app-1 API/step-ca reachable
+    depends_on:
+      wg-keypair-gen: { condition: service_completed_successfully }
+    network_mode: host
+    cap_add: [ NET_ADMIN, SYS_MODULE ]
+    entrypoint: ["python", "-m", "tunnel_gateway.launcher"]
+    environment:
+      TUNNELGW_LOG_LEVEL: INFO
+      TUNNELGW_NAMESPACE: corero-core
+      TUNNELGW_PLATFORM_API_SCOPE_ORG_ID: corero-system-owner-tunnel-gateway
+      TUNNELGW_GATEWAY_ID: ${NODE_NAME}
+      TUNNELGW_GATEWAY_REGION: rig-local
+      TUNNELGW_GATEWAY_VERSION: rig-dev
+      TUNNELGW_UNDERLAY_HOST: "0.0.0.0"
+      TUNNELGW_UNDERLAY_PORT: "19443"
+      TUNNELGW_ADMIN_HOST: "0.0.0.0"
+      TUNNELGW_ADMIN_PORT: "18445"
+      TUNNELGW_GATEWAY_ADMIN_ADVERTISED_URL: "http://${FQDN}:18445"
+      TUNNELGW_PLATFORM_API_URL: "http://app-1.rig.internal:8080"
+      TUNNELGW_PLATFORM_API_PROVISIONING_PREFIX: /provisioning
+      TUNNELGW_PLATFORM_API_TENANT_PREFIX: /tenants
+      TUNNELGW_PLATFORM_API_SECRETS_PREFIX: /secrets
+      TUNNELGW_PLATFORM_API_DNS_PREFIX: /domains
+      TUNNELGW_PLATFORM_API_CLIENT_CERT: /dev/null
+      TUNNELGW_PLATFORM_API_CLIENT_KEY: /dev/null
+      TUNNELGW_PLATFORM_API_CA_BUNDLE: /dev/null
+      TUNNELGW_SECRETS_BACKEND: local
+      TUNNELGW_SECRETS_LOCAL_DIR: /var/run/tunnel-gateway/secrets
+      TUNNELGW_WG_SERVER_KEYPAIR_SECRET_NAME: ${NODE_NAME}-wg-keypair
+      TUNNELGW_DNS_BACKEND: platform
+      TUNNELGW_STEPCA_URL: https://app-1.rig.internal:9000
+      TUNNELGW_STEPCA_PROVISIONER_NAME: tunnel-gateway-service
+      TUNNELGW_STEPCA_PROVISIONER_KEY_PATH: /secrets/tunnel-gw/provisioner.jwk
+      TUNNELGW_STEPCA_PROVISIONER_PASSWORD_PATH: /secrets/tunnel-gw/provisioner.password
+      TUNNELGW_STEPCA_ROOT_FINGERPRINT_PATH: /secrets/tunnel-gw/root.fingerprint
+      TUNNELGW_STEPCA_CA_BUNDLE: /secrets/tunnel-gw/root.crt
+      TUNNELGW_STEPCA_AUDIENCE_PATH: /1.0/sign
+      TUNNELGW_KIT_CERT_VALIDITY_DAYS: "1"
+      TUNNELGW_OPERATOR_CA_BUNDLE_PATH: /secrets/tunnel-gw/root.crt
+      TUNNELGW_RUNTIME_STATE_PATH: /var/run/tunnel-gateway/state/runtime-state.json
+      TUNNELGW_WG_INTERFACE: wg0
+      TUNNELGW_WG_LISTEN_PORT: "51820"
+      # Per-gateway IPAM partition from /etc/bootstrap — no defaults: unset
+      # means broken bootstrap, which must fail loudly.
+      TUNNELGW_WG_SERVER_ADDRESS: "${WG_ADDR}"
+      TUNNELGW_WG_CONF_DIR: /etc/wireguard
+      TUNNELGW_IPAM_CIDR: "${IPAM_CIDR}"
+      TUNNELGW_WG_ADVERTISED_ENDPOINT: "${FQDN}:51820"
+      TUNNELGW_DNS_FORWARD_ZONE: internal
+      TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
+      TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
+      TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
+      TUNNELGW_INGRESS_BRIDGE_PORT: "443"
+      TUNNELGW_DNS_RESOLVER_IPS: "192.168.150.21,192.168.150.22"
+      TUNNELGW_OPERATOR_SERVICE_CIDRS: "192.168.150.0/24"
+      TUNNELGW_EGRESS_MASQUERADE_ENABLED: "true"
+      # Transparent authorizing proxy (INTERIM docker-IP-punch): DNAT wg0
+      # traffic to the pinned edge container IP, same port.
+      TUNNELGW_API_PROXY_EDGE_IP: "172.31.40.40"
+      TUNNELGW_BRIDGE_REVERSE_URL_TEMPLATE: "https://{hw_id}.${NODE_NAME}.bridges.internal"
+    volumes:
+      - /opt/shared-secrets/tunnel-gw:/secrets/tunnel-gw:ro    # provisioner + root (9p)
+      - /var/run/docker.sock:/var/run/docker.sock:ro           # live-logs: edge Caddy follow
+      - gw-local-secrets:/var/run/tunnel-gateway/secrets
+      - gw-runtime-state:/var/run/tunnel-gateway/state
+      - gw-wg-state:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19443/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # tunnel-caddy-edge: kit-facing TLS edge (ACME from the app VM's step-ca).
+  tunnel-caddy-edge:
+    image: ${IMAGE_CADDY}
+    container_name: rig2-tunnel-caddy-edge
+    hostname: ${NODE_NAME}
+    logging: *x-default-logging
+    restart: unless-stopped
+    ports:
+      - "80:80"       # ACME http-01 challenge (step-ca dials gw-N.rig.internal:80)
+      - "443:443"     # folded edge: /redeem,/health (anon) + /reconnect (mTLS) + L4 SNI passthrough
+    # Node identity comes from the bootstrap file (orchestrator resolves the path).
+    env_file:
+      - ${COREWAF_BOOTSTRAP}
+    environment:
+      CADDY_INGRESS_NETWORKS: edge-rig
+      CADDY_DOCKER_LABEL_PREFIX: tunnel_caddy
+      CADDY_DOCKER_CADDYFILE_PATH: /etc/caddy/Caddyfile.fragment
+    extra_hosts:
+      - "tunnel-gw:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/shared-secrets/tunnel-gw/root.crt:/etc/ssl/rigca/root.crt:ro
+      - /opt/v2/config/Caddyfile.edge.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - caddy-edge-data:/data
+    networks:
+      edge:
+        ipv4_address: 172.31.40.40

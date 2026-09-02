@@ -1,0 +1,15 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "obs",
+    "description": "Observability plane (obs VM): loki + mimir + alertmanager + grafana + TLS front.",
+    "sources": { "caddy": { "image": "caddy-docker-proxy", "version": "1.0.1-dc8f18b" } },
+    "docker": { "projectName": "obs" },
+    "variables": {
+      "IMAGE_LOKI": "grafana/loki:3.1.1",
+      "IMAGE_MIMIR": "grafana/mimir:2.13.0",
+      "IMAGE_ALERTMANAGER": "prom/alertmanager:v0.27.0",
+      "IMAGE_GRAFANA": "grafana/grafana:11.2.0"
+    }
+  }
+}

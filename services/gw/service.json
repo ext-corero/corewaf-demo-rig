@@ -1,0 +1,13 @@
+{
+  "_comment_network": "edge-rig needs a pinned ipam subnet, which manifest docker.networks cannot express (rig-homologation finding); it stays declared in compose.yml (single-project network, semantics preserved).",
+  "version": "0.0.6",
+  "service": {
+    "name": "gw",
+    "description": "Tunnel gateway + kit-facing TLS edge (per gw VM).",
+    "sources": {
+      "tunnel-gateway": { "image": "tunnel-gateway",     "version": "0.0.21-16698a7" },
+      "caddy":          { "image": "caddy-docker-proxy", "version": "1.0.1-dc8f18b" }
+    },
+    "docker": { "projectName": "gw" }
+  }
+}

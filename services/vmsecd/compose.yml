@@ -1,0 +1,77 @@
+# demo rig — secrets-manager (vmsecd) per dns VM. Ported from compose/secrets.yml
+# (orchestrator path); separate project so it coexists with the dns stack.
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  secrets:
+    name: secrets-rig
+
+volumes:
+  vmsecd-secrets:   # SEEK_SECRET + JWT_SECRET, minted once by init-secrets
+  vmsecd-data:      # the KDBX store + cold-boot registration-uuid state
+
+services:
+  init-secrets:
+    image: ${IMAGE_VMSECD}
+    logging: *x-default-logging
+    user: "0:0"
+    networks: [ secrets ]
+    volumes: [ "vmsecd-secrets:/secrets" ]
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /secrets/vmsecd.env ] \
+           && grep -q '^SEEK_SECRET=' /secrets/vmsecd.env \
+           && grep -q '^JWT_SECRET=' /secrets/vmsecd.env; then
+          echo "init: /secrets/vmsecd.env already exists — nothing to do"; exit 0
+        fi
+        echo "init: generating secrets"
+        printf 'SEEK_SECRET=%s\nJWT_SECRET=%s\n' "$(pwgen -s 32 1)" "$(pwgen -s 32 1)" > /secrets/vmsecd.env
+        chmod 600 /secrets/vmsecd.env
+        echo "init: done"
+
+  vmsecd:
+    image: ${IMAGE_VMSECD}
+    container_name: rig2-vmsecd
+    logging: *x-default-logging
+    restart: unless-stopped     # self-assembly: retry until app VM is reachable
+    user: "0:0"
+    depends_on:
+      init-secrets: { condition: service_completed_successfully }
+    networks: [ secrets ]
+    command:
+      - sh
+      - -c
+      - |
+        . /secrets/vmsecd.env && export SEEK_SECRET JWT_SECRET
+        exec uvicorn secrets_manager:app --host 0.0.0.0 --port 8000
+    environment:
+      KDBX_PATH: /data/secrets.kdbx
+      ALLOWLIST_PATH: /config/allowlist.d
+      TOKEN_TTL_MIN: "15"
+      TRUSTED_PROXIES: "172.16.0.0/12"
+      LOG_LEVEL: INFO
+      LOG_JSON: "false"
+      PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
+      NAMESPACE: corero-core
+      ETCD_SCOPE_ORGID: system-secrets-manager
+      SECMAN_ID: ${NODE_NAME}-secman
+      SECMAN_REGION: rig-local
+      SECMAN_VERSION: rig-dev
+      SECMAN_ADVERTISED_URL: http://${FQDN}:8081
+      SECMAN_HEARTBEAT_INTERVAL_S: "30"
+      SECMAN_STATE_PATH: /data/registration-state.json
+    ports:
+      - "8081:8000"
+    volumes:
+      - vmsecd-secrets:/secrets:ro
+      - vmsecd-data:/data
+      - /opt/v2/config/secrets:/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

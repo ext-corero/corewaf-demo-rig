@@ -63,7 +63,7 @@ case "$cmd" in
         healthy "$n" && st="healthy" || st="starting/unhealthy"
         printf '  %-9s pid %-7s %s\n' "$n" "$p" "$st"; done ;;
   ssh) n="${1:?node}"; shift || true; k=$(nkey "$n"); ip=$(eval echo "\${${k}_IP}")
-       exec ssh -i "$SSH_DIR/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "alpine@$ip" "$@" ;;
+       exec ssh -i "$SSH_DIR/id_lab" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$(guest_user_for "$n")@$ip" "$@" ;;
   console) n="${1:?node}"; exec env RUN_DIR="$QDIR/run/$n" socat -,raw,echo=0,escape=0x1c "unix-connect:$QDIR/run/$n/ttyS1.sock" ;;
   stack) n="${1:?node}"; k=$(nkey "$n"); role_env "$k"
        env NODE_KEY="$k" ROLE="$ROLE" RUN_DIR="$QDIR/run/$n" STATE_DIR="$QDIR/state/$n" vm-stack ;;
