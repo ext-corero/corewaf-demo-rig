@@ -231,6 +231,35 @@ customer edge hardware.
 - **Caveat:** models 1/2 and model 3 share subnet `192.168.150.0/24` — do not run both on
   one host at the same time.
 
+## Roadmap — the three demo tracks
+
+Now that the rig runs the production OS/provisioning stack on all three models, the
+functional goals ahead are organized as three tracks (this section is the living plan):
+
+1. **Modularity (redundancy on demand).** The demo should let the user choose whether
+   they want redundancy for the main features. Skipping the second DNS and second
+   gateway saves two VMs (~4 GB and minutes of boot) when the demo doesn't need the
+   failover story. First concrete step: a **system-size selector in the Docker Desktop
+   extension** — *Minimal* (no dns-2/gw-2, Backstage not started by default) vs *Full*
+   (everything, as today). Model 3 users compose their own set and don't need this.
+
+2. **Curated demo data.** The demo data set we have used in past demos becomes a
+   **persistent, maintained artifact of the corewaf workspace** — versioned, fixed and
+   extended over time like any other component, and loaded into the rig so a freshly
+   launched system is populated and demo-ready instead of empty. (First task: locate
+   the existing set and promote it into the workspace.)
+
+3. **Data path (later).** A **protected entity** behind the WAAP: real traffic
+   forwarded through an enrolled WAAP kit to a demo origin, preferably exercising the
+   curated demo data from track 2 — dashboards moving, attacks blocked, the full
+   story. *Deliberately deferred*: it needs focused attention and a newer release of
+   the API before the rig can wire it.
+
+Beyond the demo tracks, the rig's second job is **development**: the first feature to
+be homologated and integrated on the rig is the **orchestrator** — which is also when
+the launch path (today's ssh-driven `vm-stack`) converges on the production
+`compose-stacks` flow, in one migration.
+
 ## Channels & versions
 
 | | **stable** (use this) | development |
