@@ -237,6 +237,8 @@ services:
     profiles: [tools]
     command: cli
     env_file: [inventory.env, images.env]
+    environment:
+      RIG_OS: "${RIG_OS:-alpine}"
     networks: [rig]
     # resolve *.rig.internal the way the guests do: via the rig's dns VMs
     dns: ["${RIG_DNS_1_IP:-192.168.150.21}", "${RIG_DNS_2_IP:-192.168.150.22}"]
