@@ -9,8 +9,11 @@
 #   console NODE    serial console (alpine/alpine on kits; Ctrl-\ detaches)
 #   stack NODE      re-run the in-guest stack
 #   kit NAME        boot + stage + mint + enrol a kit (demo|a|b)
-#   stop | down     graceful VM shutdown | shutdown (state kept either way)
+#   stop | down     stop all VMs (aliases; state kept)
 #   destroy         stop + DELETE all state (disks, CA, secrets, identities)
+#   verify          run the rig health checklist (rig verify)
+#   route-info      how to make the rig LAN-reachable (route mode)
+#   net             switch the libvirt net between nat and route mode
 # Needs: qemu/prep-host.sh once; AWS_PROFILE (or keys) of an ECR pull user.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -100,5 +103,5 @@ case "$cmd" in
         echo "  sudo nft add table ip corewaf-rig ';' add chain ip corewaf-rig post '{ type nat hook postrouting priority srcnat; }' ';' add rule ip corewaf-rig post ip saddr ${RIG_NET_CIDR} ip daddr != ${RIG_NET_CIDR} masquerade"
         echo "then: qemu/rig-qemu route-info   # the route + hosts lines for your desktop"
     fi ;;
-  *) sed -n '2,15p' "$0" ;;
+  *) sed -n '2,18p' "$0" ;;
 esac

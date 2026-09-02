@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kit-stage — stage this node's KIT guest for a demo (not enrolled). Runs inside the
 # kit node container (docker compose exec kit-demo kit-stage). Same steps as the
-# libvirt-era kit-prep.sh, over the container's own ssh path to the guest:
+# top-level kit-prep.sh, over the container's own ssh path to the guest:
 #   rig root CA, starter-kit clone (KIT_REPO_URL@KIT_REF), kit images pulled from the
 #   CoreWAF registry and re-tagged to the names the public compose expects, the
 #   /opt/kit-demo helper (corewaf-demo-up) and a console login (alpine/alpine).

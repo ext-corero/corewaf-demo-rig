@@ -8,10 +8,10 @@
 # so the two dns VMs serve dynamic records redundantly — the distributed
 # behaviour under test.
 #
-# RIG_SELF_FQDN / RIG_SELF_NAME are injected per-instance by vmlab.sh stack so
+# NODE_NAME/FQDN come per-instance from /etc/corewaf-bootstrap so
 # this one file serves both dns-1 and dns-2.
 #
-# Run (via vmlab.sh stack dns N):
+# Run (via vm-stack (ROLE=dns)):
 #   docker compose --env-file inventory.env -f compose/dns.yml up --build -d
 
 x-logging: &x-default-logging

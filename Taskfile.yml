@@ -50,10 +50,15 @@ tasks:
     desc: 'Logs of a container inside a guest: task logs NODE=gw-1 C=rig2-tunnel-gateway [ARGS="--tail 200"]'
     cmds: ['{{.CLI}} rig logs {{.NODE}} {{.C}} {{.ARGS}}']
 
-  logs:
+  node-logs:
     desc: 'VM serial console of a node (NODE=app-1|dns-1|dns-2|gw-1|gw-2|obs-1|kit-demo)'
     requires: { vars: [NODE] }
     cmds: ['{{.DC}} --profile kit logs -f --tail=100 {{.NODE}}']
+
+  exec:
+    desc: 'Run a command in a container inside a guest: task exec NODE=gw-1 C=rig2-tunnel-gateway CMD="wg show"'
+    requires: { vars: [NODE, C, CMD] }
+    cmds: ['{{.CLI}} rig exec {{.NODE}} {{.C}} {{.CMD}}']
 
   ssh:
     desc: 'Shell into a guest (NODE=app-1 ... [CMD="..."])'

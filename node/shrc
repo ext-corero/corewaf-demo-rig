@@ -22,5 +22,5 @@ if [ -t 0 ] && [ -z "${RIG_BANNER_SHOWN:-}" ]; then
   else
     printf '   \033[31m✗\033[0m guest ssh NOT reachable (booting or stalled — try: vm-health; docker restart this container)\n'
   fi
-  printf '   \033[2mvm-ssh = shell inside the VM · console = serial (alpine/alpine, Ctrl-] detaches) · vm-health = probe\033[0m\n\n'
+  printf '   \033[2mvm-ssh = shell inside the VM · console = serial (infra: autologin core; kits: alpine/alpine, Ctrl-] detaches) · vm-health = probe\033[0m\n\n'
 fi

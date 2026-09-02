@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# lib/registry.sh — registry helpers shared by vmlab.sh, kit-prep.sh, kit-up.sh, bundle.sh.
+# lib/registry.sh — registry helpers shared by the kit tooling (node/bin/kit-stage, kit-prep.sh, kit-up.sh).
 # Source it; expects $RIG_DIR (repo root). Reads images.env.
 #
 # The demo rig pulls everything from the CoreWAF registry (ECR). The operator's
 # AWS identity on the HOST (AWS_PROFILE / AWS_ACCESS_KEY_ID..., any IAM user in
 # group corewaf-ecr-pull) mints a 12h registry token; VMs get it as a docker
-# auth entry (root's /root/.docker/config.json). RIG_MODE=source / RIG_BUNDLE=1
+# auth entry (root's /root/.docker/config.json). RIG_MODE=source
 # need no registry access at all.
 
 reg_images_env() { echo "${RIG_DIR:?}/images.env"; }
@@ -21,7 +21,7 @@ reg_ref() { echo "$(reg_registry)/$1"; }
 reg_docker_auth() {
     local tok
     tok="$(aws ecr get-login-password --region "$(reg_region)" 2>/dev/null)" \
-        || { echo "error: cannot mint a registry token for $(reg_host) — set AWS_PROFILE (or AWS_ACCESS_KEY_ID/SECRET) to a CoreWAF registry user (group corewaf-ecr-pull), or use RIG_MODE=source / RIG_BUNDLE=1" >&2; return 1; }
+        || { echo "error: cannot mint a registry token for $(reg_host) — set AWS_PROFILE (or AWS_ACCESS_KEY_ID/SECRET) to a CoreWAF registry user (group corewaf-ecr-pull), or use RIG_MODE=source" >&2; return 1; }
     printf 'AWS:%s' "$tok" | base64 -w0
 }
 # Complete /root/.docker/config.json content.
@@ -30,15 +30,6 @@ reg_docker_config_json() { printf '{"auths": {"%s": {"auth": "%s"}}}\n' "$(reg_h
 # Kit images: "src:tag=>dst:tag" pairs (registry-relative src) + public ones.
 reg_kit_pairs()  { reg_var KIT_IMAGES; }
 reg_kit_public() { reg_var KIT_PUBLIC_IMAGES; }
-# Every registry-relative rig image "path:tag" from images.env (for bundle/save).
-reg_rig_images() {
-    local f; f="$(reg_images_env)"
-    for v in $(sed -n 's/^\([A-Z_]*\)_IMAGE=.*/\1/p' "$f"); do
-        local img tag; img="$(reg_var "${v}_IMAGE")"; tag="$(reg_var "${v}_TAG")"
-        [[ -n "$tag" ]] && echo "$img:$tag"
-    done
-}
-reg_public_images() { sed -n 's/^\([A-Z_]*\)_IMAGE=\([^ ]*:[^ ]*\)$/\2/p' "$(reg_images_env)"; }
 
 # Shell snippet run INSIDE a VM (as root) to pull kit images from the registry and
 # re-tag them to the names the unmodified public starter-kit compose expects.

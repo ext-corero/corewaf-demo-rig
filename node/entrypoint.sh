@@ -140,7 +140,7 @@ trap 'shutdown_vm; exit 0' TERM INT
   for _ in $(seq 1 180); do nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1 && break; sleep 2; done
   nc -z -w2 "$NODE_IP" 22 >/dev/null 2>&1 || { log "guest never opened ssh"; exit 0; }
   log "guest up (ssh)"
-  if [[ "${NO_STACK:-0}" != 1 && "$ROLE" != kit ]]; then
+  if [[ "$ROLE" != kit ]]; then
       if [[ "$ROLE" == gw || "$ROLE" == obs ]]; then
           for _ in $(seq 1 120); do [[ -f "$SECRETS_DIR/tunnel-gw/root.crt" ]] && break; sleep 5; done
           [[ -f "$SECRETS_DIR/tunnel-gw/root.crt" ]] || log "warning: app-1 never published tunnel-gw secrets; starting anyway"

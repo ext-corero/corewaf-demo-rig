@@ -1,7 +1,7 @@
 # base-image — build the demo rig's VM base image with Packer and publish it to
 # the CoreWAF registry (ECR) as an OCI artifact:
 #   <ECR_REGISTRY>/io.corewaf.ghcr/rig/base-image:<alpine>-<recipe-sha>  (+ :latest)
-# Hosts never build this; scripts/fetch-base.sh pulls it (pull-only IAM user).
+# Hosts never build this; node/bin/rig-init pulls it (pull-only IAM user).
 #
 # GitHub-hosted runners have no KVM, so Packer runs the build VM under TCG
 # emulation: slow (~20-30 min) but hands-off. Triggers only on recipe changes

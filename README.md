@@ -238,6 +238,9 @@ migration: the same ssh-driven `vm-stack`, but instead of the proprietary
 launch data (`compose/<role>.yml` + `inventory.env`/`images.env`), each guest
 runs the production shape — per-service `service.json` (schema 0.0.6) +
 `compose.yml` under `services/`, consumed by `orchestrator compose up`
+(host-side tooling still reads `inventory.env` for node identity and
+`images.env` for `RIG_ORCHESTRATOR_REF` + host images; `scripts/check-pins.sh`
+asserts the legacy guest pins match the manifests until the flip)
 (the local, unattested verb). Opt-in: `RIG_LAUNCH=orchestrator` (default stays
 the legacy compose path until the flip).
 

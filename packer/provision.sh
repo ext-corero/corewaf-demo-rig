@@ -2,7 +2,7 @@
 # provision.sh — bake the demo rig's VM base image (ONE image for the infra VMs
 # app/dns/gw/obs AND the kit VMs). Runs as root inside the Packer build VM.
 # Built by CI (.github/workflows/base-image.yml) and published to the CoreWAF
-# registry as an OCI artifact; hosts only ever PULL it (scripts/fetch-base.sh).
+# registry as an OCI artifact; hosts only ever PULL it (node/bin/rig-init).
 set -eux
 
 apk update

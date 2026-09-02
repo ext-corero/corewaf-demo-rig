@@ -1,6 +1,6 @@
 # compose/build/app.yml — RIG_MODE=source override: build the rig images from a
 # sibling corewaf-workspace checkout instead of pulling the pins in images.env.
-# Used by vmlab.sh as:  docker compose -f compose/app.yml -f compose/build/app.yml up --build
+# Used by vm-stack (RIG_MODE=source) as:  docker compose -f compose/app.yml -f compose/build/app.yml up --build
 # RIG_SRC is the workspace root as seen inside the VM (virtiofs, source mode only).
 
 services:
