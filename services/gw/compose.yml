@@ -64,7 +64,7 @@ services:
       TUNNELGW_ADMIN_HOST: "0.0.0.0"
       TUNNELGW_ADMIN_PORT: "18445"
       TUNNELGW_GATEWAY_ADMIN_ADVERTISED_URL: "http://${FQDN}:18445"
-      TUNNELGW_PLATFORM_API_URL: "http://app-1.rig.internal:8080"
+      TUNNELGW_PLATFORM_API_URL: "${platform_api_url}"
       TUNNELGW_PLATFORM_API_PROVISIONING_PREFIX: /provisioning
       TUNNELGW_PLATFORM_API_TENANT_PREFIX: /tenants
       TUNNELGW_PLATFORM_API_SECRETS_PREFIX: /secrets
@@ -76,7 +76,7 @@ services:
       TUNNELGW_SECRETS_LOCAL_DIR: /var/run/tunnel-gateway/secrets
       TUNNELGW_WG_SERVER_KEYPAIR_SECRET_NAME: ${NODE_NAME}-wg-keypair
       TUNNELGW_DNS_BACKEND: platform
-      TUNNELGW_STEPCA_URL: https://app-1.rig.internal:9000
+      TUNNELGW_STEPCA_URL: ${stepca_url}
       TUNNELGW_STEPCA_PROVISIONER_NAME: tunnel-gateway-service
       TUNNELGW_STEPCA_PROVISIONER_KEY_PATH: /secrets/tunnel-gw/provisioner.jwk
       TUNNELGW_STEPCA_PROVISIONER_PASSWORD_PATH: /secrets/tunnel-gw/provisioner.password
@@ -97,10 +97,10 @@ services:
       TUNNELGW_DNS_FORWARD_ZONE: ${TUNNEL_ZONE}
       TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
       TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
-      TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
+      TUNNELGW_APPROVED_INGRESS_CIDRS: "${operator_cidrs}"
       TUNNELGW_INGRESS_BRIDGE_PORT: "443"
-      TUNNELGW_DNS_RESOLVER_IPS: "192.168.150.21,192.168.150.22"
-      TUNNELGW_OPERATOR_SERVICE_CIDRS: "192.168.150.0/24"
+      TUNNELGW_DNS_RESOLVER_IPS: "${dns_resolvers}"
+      TUNNELGW_OPERATOR_SERVICE_CIDRS: "${operator_cidrs}"
       TUNNELGW_EGRESS_MASQUERADE_ENABLED: "true"
       # Transparent authorizing proxy (INTERIM docker-IP-punch): DNAT wg0
       # traffic to the pinned edge container IP, same port.

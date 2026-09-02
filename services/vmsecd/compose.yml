@@ -55,7 +55,7 @@ services:
       TRUSTED_PROXIES: "172.16.0.0/12"
       LOG_LEVEL: INFO
       LOG_JSON: "false"
-      PROVISIONING_API_URL: http://app-1.rig.internal:8080/provisioning
+      PROVISIONING_API_URL: ${platform_api_url}/provisioning
       NAMESPACE: ${namespace}
       ETCD_SCOPE_ORGID: system-secrets-manager
       SECMAN_ID: ${NODE_NAME}-secman

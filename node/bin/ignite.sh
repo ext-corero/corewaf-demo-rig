@@ -99,6 +99,10 @@ system_ns=io.corewaf.ghcr/ext-corero/waf
 domain=${RIG_DOMAIN#*.}
 oci_registry=$(reg_host)
 acme_url=https://$RIG_APP_FQDN:9000/acme/acme/directory
+platform_api_url=http://$RIG_APP_FQDN:8080
+stepca_url=https://$RIG_APP_FQDN:9000
+dns_resolvers=$(echo $RIG_RESOLVERS | tr ' ' ',')
+operator_cidrs=$RIG_NET_CIDR
 # root CA cert PATH (guest-visible); a service manifest variable root_ca_cert overrides
 root_ca_cert=/opt/rig-ca/root_ca.crt
 dns_upstream=${RIG_DNS_UPSTREAM:-8.8.8.8}

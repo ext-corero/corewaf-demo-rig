@@ -29,7 +29,7 @@ services:
       LOG_FORMAT: json
       DEBUG_MODE: "false"
       # CORS origins = the GUI's names (rig LAN + operator browser via published port).
-      CORS_ALLOWED_ORIGINS: '["http://gui-1.rig.internal:8080","http://app-1.rig.internal:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-28080}","http://app-1.localhost:${RIG_HTTP_PORT:-28080}","http://localhost:5173"]'
+      CORS_ALLOWED_ORIGINS: '["http://gui-1.${CS_DOMAIN}:8080","http://app-1.${CS_DOMAIN}:8080","http://gui-1.localhost:${RIG_HTTP_PORT:-28080}","http://app-1.localhost:${RIG_HTTP_PORT:-28080}","http://localhost:5173"]'
       PROVISIONING_SIGNING_KEY_PATH: /var/lib/waf-api/envelope.jwk
       # Intra-container service modules (Circus) — loopback wiring.
       CADDY_API_PROVISIONING_URL: http://localhost:8009
@@ -51,7 +51,7 @@ services:
       retries: 12
       start_period: 120s   # cold start runs loader-zero migrations
     labels:
-      caddy: "http://app-1.rig.internal, http://app-1.localhost"
+      caddy: "http://app-1.${CS_DOMAIN}, http://app-1.localhost"
       caddy.0_handle_path: "/tenants/*"
       caddy.0_handle_path.reverse_proxy: "{{upstreams http 8001}}"
       caddy.1_handle_path: "/domains/*"
