@@ -41,6 +41,16 @@ for n in app-1 dns-1 dns-2 gw-1 gw-2 obs-1 kit-demo kit-a kit-b; do
   sudo ip link set "$t" master virbr-cwrig up
 done
 ok "taps tap-cw-* on virbr-cwrig (recreate after a reboot by re-running prep)"
+
+# Guest egress NAT. libvirt is expected to program this with the network, but
+# after a host reboot the net can come up "active" with no masquerade rule
+# (observed 2026-09: FORWARD accepts present, NAT absent -> guests reach
+# nothing). Ensure it idempotently; harmless duplicate-check when libvirt did
+# its job.
+if ! sudo iptables -t nat -C POSTROUTING -s 192.168.150.0/24 ! -d 192.168.150.0/24 -j MASQUERADE 2>/dev/null; then
+  sudo iptables -t nat -I POSTROUTING -s 192.168.150.0/24 ! -d 192.168.150.0/24 -j MASQUERADE
+fi
+ok "guest egress NAT (masquerade 192.168.150.0/24)"
 say "qemu-bridge-helper ACL"
 sudo mkdir -p /etc/qemu; grep -qx "allow virbr-cwrig" /etc/qemu/bridge.conf 2>/dev/null || echo "allow virbr-cwrig" | sudo tee -a /etc/qemu/bridge.conf >/dev/null
 H=""; for c in /usr/lib/qemu/qemu-bridge-helper /usr/libexec/qemu-bridge-helper; do [[ -x $c ]] && H=$c; done
