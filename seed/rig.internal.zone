@@ -11,7 +11,7 @@
 $ORIGIN rig.internal.
 $TTL 60
 @        60  IN  SOA   ns.rig.internal. admin.rig.internal. (
-              2026052003  ; serial
+              2026090201  ; serial
               300         ; refresh
               60          ; retry
               3600        ; expire
@@ -50,6 +50,9 @@ stepca       60  IN  CNAME app-1.rig.internal.
 etcd         60  IN  CNAME app-1.rig.internal.
 redis        60  IN  CNAME app-1.rig.internal.
 caddy        60  IN  CNAME app-1.rig.internal.
+; demo protected entity (OWASP Juice Shop, :3000 on the app VM) — the origin
+; the kits' WAAP instances protect (track 3 data path)
+juice        60  IN  CNAME app-1.rig.internal.
 
 ; secrets-managers (vmsecd, :8081) — one per dns VM
 secman-1     60  IN  CNAME dns-1.rig.internal.
