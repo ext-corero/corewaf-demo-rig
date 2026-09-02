@@ -8,6 +8,17 @@
       "tunnel-gateway": { "image": "tunnel-gateway",     "version": "0.0.21-16698a7" },
       "caddy":          { "image": "caddy-docker-proxy", "version": "1.0.1-dc8f18b" }
     },
-    "docker": { "projectName": "gw" }
+    "docker": { "projectName": "gw" },
+    "variables": {
+      "ACME_EMAIL": "rig@local",
+      "_comment_zone": "TUNNEL_ZONE must stay a single dns label (used undotted inside a regex in the edge fragment)",
+      "TUNNEL_ZONE": "internal",
+      "_comment_dnat": "RIG-INTERIM per-port DNAT listener list; disappears with native TLS + SNI uplink (epic #94)",
+      "DNAT_PORT_LIST": "http://:8080, http://:3100, http://:9009"
+    },
+    "templates": [
+      { "source": "templates/Caddyfile.edge.fragment", "destination": "config/Caddyfile.edge.fragment", "overwrite": true }
+    ],
+    "files": [ "service.json", "compose.yml", "templates/Caddyfile.edge.fragment" ]
   }
 }

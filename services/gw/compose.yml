@@ -94,7 +94,7 @@ services:
       TUNNELGW_WG_CONF_DIR: /etc/wireguard
       TUNNELGW_IPAM_CIDR: "${IPAM_CIDR}"
       TUNNELGW_WG_ADVERTISED_ENDPOINT: "${FQDN}:51820"
-      TUNNELGW_DNS_FORWARD_ZONE: internal
+      TUNNELGW_DNS_FORWARD_ZONE: ${TUNNEL_ZONE}
       TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
       TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
       TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
@@ -105,7 +105,7 @@ services:
       # Transparent authorizing proxy (INTERIM docker-IP-punch): DNAT wg0
       # traffic to the pinned edge container IP, same port.
       TUNNELGW_API_PROXY_EDGE_IP: "172.31.40.40"
-      TUNNELGW_BRIDGE_REVERSE_URL_TEMPLATE: "https://{hw_id}.${NODE_NAME}.bridges.internal"
+      TUNNELGW_BRIDGE_REVERSE_URL_TEMPLATE: "https://{hw_id}.${NODE_NAME}.bridges.${TUNNEL_ZONE}"
     volumes:
       - /opt/shared-secrets/tunnel-gw:/secrets/tunnel-gw:ro    # provisioner + root (9p)
       - /var/run/docker.sock:/var/run/docker.sock:ro           # live-logs: edge Caddy follow
@@ -142,7 +142,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/shared-secrets/tunnel-gw/root.crt:/etc/ssl/rigca/root.crt:ro
-      - /opt/v2/config/Caddyfile.edge.fragment:/etc/caddy/Caddyfile.fragment:ro
+      - /opt/rig-state/services/gw/config/Caddyfile.edge.fragment:/etc/caddy/Caddyfile.fragment:ro
       - caddy-edge-data:/data
     networks:
       edge:

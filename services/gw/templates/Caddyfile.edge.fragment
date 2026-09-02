@@ -1,0 +1,161 @@
+# ORCHESTRATOR TEMPLATE (text/template): rendered to config/Caddyfile.edge.fragment.
+# {{ .Env.TUNNEL_ZONE }} must remain a SINGLE dns label (it lands inside a regex undotted).
+# ── edge global options + caddy-l4 SNI uplink (task #98, Stage A) ──────────
+# The layer4 app is a GLOBAL option, and Caddy permits only ONE global block —
+# so the edge's globals (email/auto_https) live HERE, not in
+# docker-proxy labels (removed from gw.yml). caddy-docker-proxy imports this
+# fragment, so this single global block carries them all.
+#
+# layer4 :443 = the SNI-routed front for ALL inbound TLS (production shape):
+#   - SNI *.{$NODE_NAME}.bridges.internal (a kit) -> L4 PASSTHROUGH to the kit's
+#     caddy-internal :443 (via the kit's <hwid>-peer.<zone> A-record published
+#     at /reconnect). NOTE the wildcard MUST include the gateway-id label:
+#     bridge names are <hwid>.<gw>.bridges.internal (TWO labels under
+#     bridges.internal), and caddy-l4's `tls sni` wildcard matches exactly ONE
+#     label — so `*.bridges.internal` would silently never match. The kit
+#     terminates with its OWN step-ca cert — end-to-end TLS, gateway terminates
+#     nothing. This SAME path carries the ACME TLS-ALPN-01 challenge (step-ca ->
+#     bridges-name:443 acme-tls/1 -> here -> kit answers), which is why #97
+#     forces the ALPN challenge.
+#   - SNI {$FQDN} (the gateway) -> chain to the L7 redeem/reconnect app, now on
+#     internal :8443. L4 passthrough preserves the mTLS (verify_if_given) cert.
+# The cleartext forward path (:8080/:3100/:9009) is plain HTTP, not TLS, so the
+# L4 front never touches it.
+{
+	email {{ .Env.ACME_EMAIL }}
+	auto_https disable_redirects
+	layer4 {
+		:443 {
+			@kit {
+				tls sni *.{$NODE_NAME}.bridges.{{ .Env.TUNNEL_ZONE }}
+				vars_regexp kit {l4.tls.server_name} ^(?P<hwid>[^.]+)\.
+			}
+			route @kit {
+				proxy {l4.regexp.kit.hwid}-peer.{{ .Env.TUNNEL_ZONE }}:443
+			}
+			# Overlay reverse channel: <uuid>.waf.internal — GATEWAY-FREE
+			# (the api writes this CNAME at registration; re-home rewrites only
+			# the target, never the name). The wildcard matches the single uuid
+			# label; the vars_regexp captures it as the routing key, restricted
+			# to hex+hyphen with an EXACT .waf.internal suffix so a crafted SNI
+			# can't steer the passthrough to an arbitrary <x>-peer host (regex
+			# avoids {n} quantifiers — caddy-docker-proxy would mis-read them as
+			# placeholders). Routes to <uuid>-peer.internal (api CNAME ->
+			# <hwid>-peer -> kit clientIP): same passthrough as @kit, no gw label.
+			@overlay {
+				tls sni *.waf.{{ .Env.TUNNEL_ZONE }}
+				vars_regexp ov {l4.tls.server_name} ^(?P<id>[0-9a-fA-F-]+)\.waf\.{{ .Env.TUNNEL_ZONE }}$
+			}
+			route @overlay {
+				proxy {l4.regexp.ov.id}-peer.{{ .Env.TUNNEL_ZONE }}:443
+			}
+			@gw tls sni {$FQDN}
+			route @gw {
+				proxy localhost:8443
+			}
+		}
+	}
+}
+
+# v2 edge — SINGLE :443 server (SNI = gw-N.rig.internal).
+#
+# Folds the former :443 (anon /redeem,/health) and :444 (mTLS /reconnect)
+# into ONE listener now that every element has an FQDN. Per-path mTLS:
+#   - TLS layer: client_auth=verify_if_given → an *untrusted* client cert is
+#     rejected at the handshake; a *missing* cert is allowed through.
+#   - App layer: we always stamp X-Client-Cert-Subject (empty when no cert);
+#     the underlay's /reconnect handler 401s on an empty subject, while
+#     /redeem,/health ignore it. This is what enforces "mTLS only on
+#     /reconnect" on a single name.
+#
+# NB: we deliberately do NOT use a Caddy `vars {…} ""` route matcher — the
+# empty-string token is stripped by caddy-docker-proxy's Caddyfile
+# re-processing ("malformed vars matcher"), so enforcement moves to the
+# underlay (which already checks cert presence). header_up overwrites any
+# client-supplied X-Client-Cert-Subject, so it can't be spoofed.
+{$FQDN}:8443 {
+	tls {
+		issuer acme {
+			dir {{ .Env.acme_url }}
+			trusted_roots /etc/ssl/rigca/root.crt
+		}
+		client_auth {
+			mode verify_if_given
+			trust_pool file {
+				pem_file /etc/ssl/rigca/root.crt
+			}
+		}
+	}
+
+	reverse_proxy tunnel-gw:19443 {
+		header_up X-Client-Cert-Subject {http.request.tls.client.subject}
+	}
+}
+
+# Reverse channel (operator->kit): folded onto the :443 L4 @kit block above —
+# the edge passes the TLS stream through to the kit, which terminates with its
+# OWN step-ca cert (task #90, as delivered). The gateway terminates nothing and
+# runs no separate reverse-channel listener; the former v1-style ``:446`` stub
+# and the gateway's :446 bridge-proxy are both gone.
+
+# Transparent authorizing proxy (INTERIM docker-IP-punch).
+#
+# The gateway DNATs kit->STAMPED-service traffic to the edge on the SAME port
+# (apiGateway :8080, Loki :3100, Mimir :9009; OTEL :4318 when present). The
+# DNAT preserves the dest port, so the edge recovers it from
+# {http.request.local.port} (the port the connection arrived on) — ONE block
+# binds all the static ports and forwards to {http.request.host} on whichever
+# port it came in on, so the upstream Host stays transparent (whatever the kit
+# dialed, incl. tenant overrides) and the port matches without being hardcoded.
+# The kit's WG source IP survives the DNAT
+# (gateway POSTROUTING RETURN + FORWARD accept), so forward_auth hands it to
+# /internal/authorize, which returns the authoritative X-Scope-OrgID;
+# copy_headers stamps it onto the upstream request, REPLACING any kit-asserted
+# scope (the gateway is the identity authority). INBOUND stays plain http://
+# (the DNAT'd kit traffic is plain HTTP, protected by WireGuard; a bare port
+# would make Caddy attempt auto-HTTPS). OUTBOUND is upgraded to TLS: the proxy
+# re-originates each request as https:// to the SAME host:port (transport tls,
+# skip-verify for now) so the gateway→service leg is encrypted on the wire.
+# Full inbound-TLS / SNI-uplink transparent proxy stays deferred (epic #94).
+#
+# NOTE: this per-port scheme is RIG-INTERIM. In production every service is
+# behind :443 (HTTPS, SNI-routed), so the gateway DNATs a single :443 and the
+# edge routes by SNI to the right upstream — one listener, no per-port, native
+# TLS end to end. The per-port DNAT only exists because the rig runs services
+# on distinct clear-HTTP ports today. It disappears with native TLS + SNI
+# uplink (epic #94: tasks #95 native-TLS, #98 caddy-l4 SNI uplink).
+(authz_stamp) {
+	forward_auth tunnel-gw:19443 {
+		uri /internal/authorize
+		# X-Scope-OrgID: the kit's tenant scope (REPLACES any kit-asserted value).
+		# X-Kit-HwId: the kit's ZT-validated underlay hwId, so caddy_api can bind
+		# the overlay (CaddyInstance uuid) to this kit's ZTK at registration.
+		# X-Scope-Namespace: the namespace the kit's ZT identity resolves within
+		# (gateway settings.namespace) — stamped authoritatively like the others.
+		copy_headers X-Scope-OrgID X-Kit-HwId X-Scope-Namespace
+		header_up X-Kit-Source-IP {http.request.remote.host}
+	}
+}
+
+# One block for ALL DNAT'd service ports. The listener addresses ARE the
+# static ports we forward (add a service port -> add it to this list; nothing
+# else changes). The reverse_proxy NEVER hardcodes the port: it takes it from
+# {http.request.local.port} — the port the connection arrived on, which the
+# DNAT preserved, i.e. the matching static port. Host comes from the Host
+# header; the PATH passes through untouched (reverse_proxy forwards the full
+# request URI by default).
+#
+# OUTBOUND IS PLAIN HTTP for now. The TLS-upgrade (re-originate https:// to the
+# same host:port) was reverted: the rig upstreams (API :8080, Loki :3100,
+# Mimir :9009) serve PLAIN HTTP on these ports, so a TLS dial fails ("first
+# record does not look like a TLS handshake" / connection refused). The
+# outbound TLS upgrade is blocked until each target accepts TLS on its port —
+# that's the deferred work, alongside the client-side port normalization +
+# SNI-uplink (epic #94). Re-add `transport http { tls_insecure_skip_verify }`
+# once the targets are TLS-ready.
+{{ .Env.DNAT_PORT_LIST }} {
+	import authz_stamp
+	reverse_proxy {http.request.host}:{http.request.local.port} {
+		header_up -Authorization
+	}
+}

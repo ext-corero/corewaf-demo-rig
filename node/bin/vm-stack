@@ -27,18 +27,32 @@ if [[ "${RIG_LAUNCH:-compose}" == orchestrator ]]; then
     [[ -n "$tok" ]] || die "cannot obtain an ECR token (reg_token / $AUTH_DIR/docker-config.json)"
     # Warm-flip hygiene: the legacy projects hold the published ports.
     vm-ssh "$GUEST_SUDO sh -c 'for p in compose obs-rig secrets-rig; do docker compose -p \$p down --remove-orphans >/dev/null 2>&1 || true; done'" || true
+    # Stage service dirs onto the nodestate share (host-side; the guest sees them
+    # rw at /opt/rig-state/services via 9p). Fresh copy each run so deleted files
+    # don't linger and renders start clean; picks up the git-ignored
+    # compose.override.yml dev pin. share/ready is untouched.
+    rm -rf "$STATE_DIR/share/services"
+    mkdir -p "$STATE_DIR/share/services"
     rc=0
     while IFS= read -r svc; do
         [[ -z "$svc" || "$svc" == \#* ]] && continue
         log "orchestrator compose up: $svc"
+        cp -a "$V2_DIR/services/$svc" "$STATE_DIR/share/services/"
+        if [[ "$svc" == dns ]]; then
+            # Dev-path env-asset fill: compose up skips asset staging (attested-only),
+            # so seed the dns-seed volume here. Step 2's attested run pulls the real
+            # zone-<zone>-seed artifact instead. The orchestrator image is alpine.
+            vm-ssh "$GUEST_SUDO docker run --rm --entrypoint /bin/sh -v dns-seed:/dst -v /opt/v2/seed:/src:ro $RIG_ORCHESTRATOR_REF -c 'cp /src/rig.internal.zone /dst/'" </dev/null \
+                || { rc=$?; log "dns-seed volume fill failed (rc=$rc)"; break; }
+        fi
         cmd="$GUEST_SUDO docker run --rm"
         cmd+=" -v /var/run/docker.sock:/var/run/docker.sock"
         cmd+=" -v /etc/corewaf-bootstrap:/etc/bootstrap:ro"
-        cmd+=" -v /opt/v2:/opt/v2:ro"
+        cmd+=" -v /opt/rig-state/services/$svc:/opt/rig-state/services/$svc"
         cmd+=" -e COREWAF_REGISTRY=$(reg_host)"
         cmd+=" -e COREWAF_REGISTRY_USERNAME=AWS"
         cmd+=" -e COREWAF_REGISTRY_PASSWORD='$tok'"
-        cmd+=" $RIG_ORCHESTRATOR_REF compose up --manifest /opt/v2/services/$svc/service.json"
+        cmd+=" $RIG_ORCHESTRATOR_REF compose up --manifest /opt/rig-state/services/$svc/service.json"
         vm-ssh "$cmd" </dev/null || { rc=$?; log "orchestrator failed on $svc (rc=$rc)"; break; }
     done < "$rolefile"
     # a successful (re)start IS readiness — same health-flag contract as legacy

@@ -1,0 +1,13 @@
+# demo rig — Alertmanager. Placeholder routing: a single null receiver so
+# the service runs and the UI/API are live (:9093). Real receivers/routes are
+# part of the deferred alerting work; for now this just stands the component up
+# alongside loki/mimir/grafana.
+route:
+  receiver: 'null'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: 'null'

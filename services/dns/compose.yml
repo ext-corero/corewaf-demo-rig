@@ -12,6 +12,8 @@ networks:
 volumes:
   redis-data:
   bridge-state:   # cold-boot-persistent bridge identity (registration uuid)
+  dns-seed:
+    external: true   # created by the manifest (docker.volumes "keep") / filled by vm-stack (dev) or the attested run's asset staging
 
 services:
   redis:
@@ -42,7 +44,7 @@ services:
       - "${NODE_IP}:53:53/tcp"
     command: ["-conf", "/etc/coredns/Corefile"]
     volumes:
-      - /opt/v2/config/Corefile:/etc/coredns/Corefile:ro
+      - /opt/rig-state/services/dns/config/Corefile:/etc/coredns/Corefile:ro
     labels:
       corewaf.io/managed: "true"
       corewaf.io/instance: "${NODE_NAME}"
@@ -79,5 +81,5 @@ services:
     user: "0:0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /opt/v2/seed:/seed:ro
+      - dns-seed:/seed:ro
       - bridge-state:/var/run/dns-bridge/state

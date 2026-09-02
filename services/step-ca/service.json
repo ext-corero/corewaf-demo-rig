@@ -9,7 +9,12 @@
       "IMAGE_STEP_CA": "smallstep/step-ca:0.27.5",
       "IMAGE_STEP_CLI": "smallstep/step-cli:0.27.5",
       "STEPCA_PASSWORD": "rig-demo-stepca-password",
-      "STEPCA_PROVISIONER_PASSWORD": "rig-demo-provisioner-password"
-    }
+      "STEPCA_PROVISIONER_PASSWORD": "rig-demo-provisioner-password",
+      "STEPCA_NAME": "CoreWAF Rig CA"
+    },
+    "templates": [
+      { "source": "templates/stepca-init.sh", "destination": "config/stepca-init.sh", "overwrite": true }
+    ],
+    "files": [ "service.json", "compose.yml", "templates/stepca-init.sh", "config/stepca-bootstrap.sh" ]
   }
 }
