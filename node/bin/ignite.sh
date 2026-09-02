@@ -54,13 +54,18 @@ jq -n \
     domain_root:$domain_root, oci_registry:$oci_registry}' > "$OUT/vars.json"
 
 # ---- rig overlay Butane -----------------------------------------------------------
+# DNS=/Domains= MUST live in [Network]; [Route] sections come after (networkd
+# silently ignores DNS keys placed inside [Route] — cost us a debugging session).
+DNSLINES=""; for ns in $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-}; do DNSLINES+="          DNS=$ns"$'\n'; done
 if [[ "$NET_MODE" == bridge ]]; then
     NETBLOCK="          [Network]
           Address=$NODE_IP/24
-          Gateway=${RIG_NET_HOST_GW:-192.168.150.1}"
+          Gateway=${RIG_NET_HOST_GW:-192.168.150.1}
+$DNSLINES          Domains=$RIG_DOMAIN"
 else
     NETBLOCK="          [Network]
           Address=$NODE_IP/32
+$DNSLINES          Domains=$RIG_DOMAIN
 
           [Route]
           Destination=$AUX_IP/32
@@ -70,7 +75,6 @@ else
           Gateway=$AUX_IP
           GatewayOnLink=yes"
 fi
-DNSLINES=""; for ns in $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-}; do DNSLINES+="          DNS=$ns"$'\n'; done
 # ALWAYS the token form at provision time: the first docker-fetch happens before the
 # credential helper exists (it is inside the fetched artifact). install-bootstrap.sh
 # switches to the durable credHelpers form after installing the helper.
@@ -113,7 +117,6 @@ storage:
           MTUBytes=${MTU:-1500}
 
 $NETBLOCK
-$DNSLINES          Domains=$RIG_DOMAIN
     - path: /etc/corewaf-bootstrap
       mode: 0644
       contents:
