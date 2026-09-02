@@ -71,11 +71,11 @@ else
           GatewayOnLink=yes"
 fi
 DNSLINES=""; for ns in $RIG_RESOLVERS ${RIG_BOOTSTRAP_RESOLVER:-}; do DNSLINES+="          DNS=$ns"$'\n'; done
+# ALWAYS the token form at provision time: the first docker-fetch happens before the
+# credential helper exists (it is inside the fetched artifact). install-bootstrap.sh
+# switches to the durable credHelpers form after installing the helper.
 auth_json="$(cat "$AUTH_DIR/docker-config.json")"
-aws_creds=""; if [[ -s "$AUTH_DIR/aws-credentials" ]]; then
-    auth_json="$(printf '{"credHelpers": {"%s": "ecr-login"}}' "$(reg_host)")"
-    aws_creds="$(cat "$AUTH_DIR/aws-credentials")"
-fi
+aws_creds=""; [[ -s "$AUTH_DIR/aws-credentials" ]] && aws_creds="$(cat "$AUTH_DIR/aws-credentials")"
 bootstrap="NODE_NAME=$short
 FQDN=$NODE_FQDN
 ZONE=$RIG_DOMAIN

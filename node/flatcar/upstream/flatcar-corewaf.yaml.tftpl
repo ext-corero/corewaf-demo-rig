@@ -263,7 +263,13 @@ storage:
           fi
           if [ -z "$SRC" ]; then
             echo "Fetching bootstrap artifacts: $REF"
-            if ! docker pull "$REF"; then
+            ok=""
+            for i in $(seq 1 12); do
+              docker pull "$REF" && { ok=1; break; }
+              echo "pull attempt $i failed (registry/DNS may still be coming up) — retrying in 15s"
+              sleep 15
+            done
+            if [ -z "$ok" ]; then
               [ -d /var/lib/corewaf/artifacts ] || { echo "pull failed and no cache" >&2; exit 1; }
               SRC=/var/lib/corewaf/artifacts; echo "Pull failed — using cached bootstrap artifacts"
             fi
@@ -297,6 +303,15 @@ storage:
               install -m 0755 "$f" /opt/bin/
               echo "Installed bin: $(basename $f)"
             done
+          fi
+
+          # First boots pull with a provision-time token (a credential helper cannot
+          # fetch itself). Once the ECR helper is installed and an AWS credential is
+          # present, switch docker auth to the durable helper form for the registry.
+          OCIREG="$(sed -n 's/^oci_registry=//p' /etc/bootstrap 2>/dev/null | head -1)"
+          if [ -n "$OCIREG" ] && [ -s /root/.aws/credentials ] && [ -x /opt/bin/docker-credential-ecr-login ]; then
+            printf '{"credHelpers": {"%s": "ecr-login"}}\n' "$OCIREG" > /root/.docker/config.json
+            echo "Docker auth switched to ecr-login helper for $OCIREG"
           fi
 
           # Cache the payload so later boots work without CD-ROM or registry
