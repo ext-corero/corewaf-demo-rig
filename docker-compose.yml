@@ -7,6 +7,15 @@
 # hypervisor. Host needs only Docker + an AWS credential for the registry.
 name: corewaf-demo-rig
 
+# Launch flags shared by every node service. NOTE: `<<: *node` cannot deep-merge
+# `environment:` (each service overrides the whole map), so services merge THIS
+# anchor inside their own environment instead.
+x-node-env: &node-env
+  RIG_MODE: "${RIG_MODE:-pull}"
+  RIG_OS: "${RIG_OS:-flatcar}"
+  RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
+  RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+
 x-node: &node
   image: ${RIG_NODE_IMAGE:-123517950721.dkr.ecr.us-east-1.amazonaws.com/io.corewaf.ghcr/rig/node:3.23-e4056ff}
   build: ./node
@@ -16,18 +25,6 @@ x-node: &node
   cap_add: [NET_ADMIN]
   devices: ["/dev/kvm:/dev/kvm", "/dev/net/tun:/dev/net/tun"]
   env_file: [inventory.env, images.env]
-  environment:
-    RIG_MODE: ${RIG_MODE:-pull}
-    RIG_OS: ${RIG_OS:-flatcar}
-    RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-    RIG_BOOTSTRAP_CARRIER: ${RIG_BOOTSTRAP_CARRIER:-}
-  volumes:
-    - rig-base:/rig/base:ro
-    - rig-ca:/rig/ca:ro
-    - rig-shared-secrets:/rig/shared-secrets
-    - rig-auth:/rig/auth:ro
-    - rig-ssh:/rig/ssh:ro
-    - .:/rig/v2:ro
   depends_on:
     rig-init: { condition: service_completed_successfully }
   healthcheck:
@@ -46,7 +43,7 @@ services:
     env_file: [inventory.env, images.env]
     environment:
       RIG_OS: ${RIG_OS:-flatcar}
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
+      RIG_BOOTSTRAP_CARRIER: ${RIG_BOOTSTRAP_CARRIER:-}
       AWS_PROFILE: ${AWS_PROFILE:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -68,10 +65,7 @@ services:
       RIG_HTTP_PORT: ${RIG_HTTP_PORT:-28080}
       RAM_MB: ${RIG_APP_RAM_MB:-4096}
       VCPUS: ${RIG_APP_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_APP_MAC:-52:54:00:96:00:0a}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -93,10 +87,7 @@ services:
       NODE_KEY: RIG_DNS_1
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_DNS_1_MAC:-52:54:00:96:00:15}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -110,10 +101,7 @@ services:
       NODE_KEY: RIG_DNS_2
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_DNS_2_MAC:-52:54:00:96:00:16}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -127,10 +115,7 @@ services:
       NODE_KEY: RIG_GW_1
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_GW_1_MAC:-52:54:00:96:00:1f}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -144,10 +129,7 @@ services:
       NODE_KEY: RIG_GW_2
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_GW_2_MAC:-52:54:00:96:00:20}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -161,10 +143,7 @@ services:
       NODE_KEY: RIG_OBS_1
       RAM_MB: ${RIG_OBS_RAM_MB:-4096}
       VCPUS: ${RIG_OBS_VCPUS:-2}
-      RIG_MODE: "${RIG_MODE:-pull}"
-      RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
-      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
+      <<: *node-env
     mac_address: ${RIG_OBS_1_MAC:-52:54:00:96:00:28}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -266,7 +245,6 @@ services:
     env_file: [inventory.env, images.env]
     environment:
       RIG_OS: "${RIG_OS:-flatcar}"
-      RIG_LAUNCH: "${RIG_LAUNCH:-compose}"
     networks: [rig]
     # resolve *.rig.internal the way the guests do: via the rig's dns VMs
     dns: ["${RIG_DNS_1_IP:-192.168.150.21}", "${RIG_DNS_2_IP:-192.168.150.22}"]

@@ -18,7 +18,7 @@
 # Images pull from docker.io; the obs VM has egress via the rig masquerade and
 # falls through to the bootstrap resolver for registry DNS.
 #
-# Run (via vmlab.sh stack obs):
+# Run (via vm-stack (ROLE=obs)):
 #   docker compose --env-file inventory.env -f compose/obs.yml up -d
 
 name: obs-rig

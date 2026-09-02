@@ -8,7 +8,7 @@
 # on app-1.rig.internal (API) and gui-1.rig.internal (GUI), both resolved by
 # the dns VMs. step-ca + the gateway/edge live in their own stacks.
 #
-# Run (via vmlab.sh stack app, from <repo root>):
+# Run (via vm-stack (ROLE=app), from <repo root>):
 #   docker compose --env-file inventory.env -f compose/app.yml up --build -d
 #
 # Build contexts are relative to THIS file's dir (compose/): ../../../ is the
@@ -207,7 +207,7 @@ services:
     logging: *x-default-logging
     user: "0:0"
     environment:
-      STEPCA_PASSWORD: ${STEPCA_PASSWORD:?set by ca-init.sh (.v2/shared-secrets/rig-secrets.env)}
+      STEPCA_PASSWORD: ${STEPCA_PASSWORD:?set by rig-init (/opt/shared-secrets/rig-secrets.env)}
     volumes:
       - stepca-data:/home/step
       - /opt/rig-ca:/rigca:ro
@@ -254,8 +254,8 @@ services:
       stepca: { condition: service_healthy }
     environment:
       STEPCA_URL: https://stepca:9000
-      STEPCA_ADMIN_PASSWORD: ${STEPCA_PASSWORD:?set by ca-init.sh}
-      STEPCA_PROVISIONER_PASSWORD: ${STEPCA_PROVISIONER_PASSWORD:?set by ca-init.sh}
+      STEPCA_ADMIN_PASSWORD: ${STEPCA_PASSWORD:?set by rig-init}
+      STEPCA_PROVISIONER_PASSWORD: ${STEPCA_PROVISIONER_PASSWORD:?set by rig-init}
       STEPPATH: /tmp/step
       OUT_DIR: /secrets/tunnel-gw
     volumes:

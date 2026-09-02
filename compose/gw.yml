@@ -13,10 +13,10 @@
 # Multi-gateway: each gateway self-registers a per-instance TunnelGateway
 # record (keyed by gateway_id) and allocates kit IPs from its OWN disjoint
 # /18 sub-CIDR, so gw-1 / gw-2 never collide on the redeem/IPAM path. The
-# CIDR + WG server address are injected per-instance as RIG_SELF_IPAM_CIDR /
-# RIG_SELF_WG_ADDR by `vmlab.sh stack gw <n>`.
+# CIDR + WG server address are injected per-instance as IPAM_CIDR /
+# WG_ADDR via /etc/corewaf-bootstrap.
 #
-# RIG_SELF_NAME / RIG_SELF_FQDN injected per-instance by vmlab.sh stack.
+# NODE_NAME/FQDN come per-instance from /etc/corewaf-bootstrap.
 
 x-logging: &x-default-logging
   driver: "json-file"
@@ -195,7 +195,7 @@ services:
       - "443:443"     # folded edge: /redeem,/health (anon) + /reconnect (mTLS) + L4 kit SNI passthrough
     # The node's identity comes from /etc/corewaf-bootstrap (cloud-init), not a
     # passed-in string: env_file injects $FQDN, which the fragment reads as
-    # {$FQDN}:443 for the cert subject. No RIG_SELF_* literals or defaults.
+    # {$FQDN}:443 for the cert subject. No per-instance literals or defaults.
     env_file:
       - /etc/corewaf-bootstrap
     environment:

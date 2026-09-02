@@ -9,6 +9,7 @@
 #   exec <node> <ctr> <cmd>   run a command in a container inside a guest
 #   ssh <node> [cmd]          ssh into a guest by node name (app-1, dns-1, gw-2, kit-demo ...)
 #   mint [label] [tenant]     provisioning token (value only) via scripts/tunnel-mint.sh
+#   seed                      load the demo dataset via the platform API (NO_CRS=1 skips CRS)
 set -uo pipefail
 source "${RIG_LIB:-/usr/local/bin/rig-lib.sh}"
 V2="${V2_DIR:-/rig/v2}"
@@ -118,6 +119,6 @@ case "${1:-}" in
           gssh app-1 "$sd docker exec rig2-waf-api python /app/demo/seed_fleet.py" | tail -2
           [[ "${NO_CRS:-0}" == 1 ]] || gssh app-1 "$sd docker exec rig2-waf-api python /app/demo/seed_crs.py" | tail -2 ;;
   ssh)    shift; n="$1"; shift; gssh "$n" "$@" ;;
-  help)   sed -n '2,12p' "$0" ;;
-  *) sed -n '2,12p' "$0"; exit 2 ;;
+  help)   sed -n '2,13p' "$0" ;;
+  *) sed -n '2,13p' "$0"; exit 2 ;;
 esac
