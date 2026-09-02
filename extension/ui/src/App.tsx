@@ -178,6 +178,10 @@ export default function App() {
         <TextField size="small" label="AWS profile" value={profile} onChange={(e) => setProfile(e.target.value.trim())} sx={{ width: 200 }} />
         <TextField size="small" label="GUI port" value={guiPortCfg} onChange={(e) => setGuiPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
         <TextField size="small" label="Grafana port" value={grafanaPortCfg} onChange={(e) => setGrafanaPortCfg(e.target.value.replace(/\D/g, ''))} sx={{ width: 110 }} />
+        <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
+      </Stack>
+
+      <Stack direction="row" spacing={2} alignItems="center">
         <Tooltip title="dns-2 + gw-2 — the failover story; unchecking saves 2 VMs">
           <FormControlLabel control={<Checkbox size="small" checked={redundancy} onChange={(e) => setRedundancy(e.target.checked)} />} label="Redundant GW+DNS" />
         </Tooltip>
@@ -187,7 +191,6 @@ export default function App() {
         <Tooltip title="start the Backstage portal on Up (always available on demand via its button)">
           <FormControlLabel control={<Checkbox size="small" checked={backstage} onChange={(e) => setBackstage(e.target.checked)} />} label="Backstage" />
         </Tooltip>
-        <TextField size="small" label="Launcher image" value={image} onChange={(e) => setImage(e.target.value.trim())} sx={{ flex: 1 }} />
       </Stack>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
@@ -196,8 +199,9 @@ export default function App() {
         </span></Tooltip>
         <Tooltip title="Full health checklist, run inside the rig network"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('verify')}>Verify</Button>
-          <Tooltip title="load the curated demo data: tenants, zones, secrets, policies, fleet queue, CRS rules — idempotent"><span>
-          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('seed')}>Seed demo</Button></span></Tooltip>
+        </span></Tooltip>
+        <Tooltip title="Load the curated demo data: tenants, zones, secrets, policies, fleet queue, CRS rules — idempotent"><span>
+          <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => run('seed')}>Seed demo</Button>
         </span></Tooltip>
         <Tooltip title="Add a WAAP kit — automated enrolment, or staged for a manual in-VM demo"><span>
           <Button size="small" sx={{ height: 32 }} variant="outlined" disabled={!!busy || !appHealthy} onClick={() => setAddKitOpen(true)}>+ Add kit</Button>
