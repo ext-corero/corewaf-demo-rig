@@ -14,6 +14,22 @@ resource-heavy: the weight is a deliberate outcome of that anti-drift choice, no
 an accident — one codebase, one image set, no second schism to maintain. We may
 streamline this in the future; correctness of what you demonstrate comes first.
 
+A second design rule is the deliberate counterpart of the first: **simple and open
+by design**. The rig keeps *product parity* — same OS images, same provisioning
+templates, same software — while deliberately dropping everything that would make
+it hard to launch, demo, develop against, or train on:
+
+> ⚠️ **This rig is intentionally insecure and intentionally flat.** One shared
+> network, no segmentation or VLANs, no firewalling between nodes, permissive
+> registry credentials, shared secrets over host mounts, as few VMs as possible.
+> None of this represents — or is any statement about — the security architecture
+> of a production deployment. Production systems use segmented networks
+> (public/services/private), VM-identity-based registry authentication, a secrets
+> manager for all credential distribution, and hardened trust boundaries the rig
+> does not implement **by design**. Never treat the rig's wiring as a reference
+> for how to secure a real environment; treat it as the easiest honest way to run
+> the real product.
+
 > Naming note: the product is **Corero WAAP**; you will see the internal codename
 > `corewaf` in repository, image and container names.
 
