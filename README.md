@@ -189,6 +189,32 @@ Preferred for development and for validating proxies/gateways end-to-end.
 
 ---
 
+## Guest OS: Flatcar (feature)
+
+On `feature/flatcar-v0` the infra guests boot **Flatcar Container Linux**, provisioned by
+**Ignition rendered from the production Butane template** — byte-identical to the template the
+production estates deploy (checksum-pinned, `scripts/check-template-sync.sh`). Rig-only
+concerns (9p shares, router-mode /32 networking, node identity, registry auth) live in a
+separate Ignition overlay merged after the template. Kits stay on Alpine — they emulate
+customer edge hardware.
+
+- **Enable:** `RIG_OS=flatcar` (all three models). Default is still `alpine` until the merge.
+- **Artifacts, not baked images:** the OS image is stock upstream Flatcar republished to the
+  registry (`os-images/flatcar-qemu`, A/B-update path preserved); boot payloads (the
+  docker-compose sysext + ECR credential helper) ship as a scratch container image
+  (`os-images/bootstrap-artifacts`) that the guest **docker-fetches at boot** — the same
+  chain a registry-backed cloud deployment uses. `RIG_BOOTSTRAP_CARRIER=iso` exercises the
+  vSphere-style CD-ROM bridge instead.
+- **Auth chain:** first boot pulls with a provision-time registry token; the template's
+  install-bootstrap installs the credential helper from the payload and switches docker to
+  the durable helper form.
+- **Browser URLs are model-driven:** `/etc/corewaf-bootstrap` carries `PUBLIC_API_HOST` —
+  `app-1.localhost:<port>` on the Docker models, `app-1.<zone>:8080` on bridge/cloud models.
+- **Reprovision:** config changes re-apply via `sudo /reprovision` + a VM restart (fw_cfg is
+  read at QEMU start). The docker volume (2nd disk, label `docker`) survives the ROOT wipe.
+- **Caveat:** models 1/2 and model 3 share subnet `192.168.150.0/24` — do not run both on
+  one host at the same time.
+
 ## Channels & versions
 
 | | **stable** (use this) | development |
