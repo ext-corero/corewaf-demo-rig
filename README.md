@@ -198,7 +198,7 @@ concerns (9p shares, router-mode /32 networking, node identity, registry auth) l
 separate Ignition overlay merged after the template. Kits stay on Alpine — they emulate
 customer edge hardware.
 
-- **Enable:** `RIG_OS=flatcar` (all three models). Default is still `alpine` until the merge.
+- **Default.** Infra guests boot Flatcar; `RIG_OS=alpine` selects the legacy path (kits are always Alpine).
 - **Artifacts, not baked images:** the OS image is stock upstream Flatcar republished to the
   registry (`os-images/flatcar-qemu`, A/B-update path preserved); boot payloads (the
   docker-compose sysext + ECR credential helper) ship as a scratch container image

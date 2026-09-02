@@ -13,7 +13,7 @@
 : "${SSH_DIR:=$RIG_ROOT/ssh}"               # id_lab keypair
 : "${STATE_DIR:=/state}"                    # per-node state (disk.qcow2, tpm/, share/)
 : "${RUN_DIR:=/run}"                        # per-node sockets + rendered seed
-: "${RIG_OS:=alpine}"                       # infra guest OS: alpine | flatcar (kits always alpine)
+: "${RIG_OS:=flatcar}"                      # infra guest OS: flatcar (default) | alpine (legacy); kits always alpine
 # Guest login/privilege words. Flatcar infra guests: core/sudo; Alpine: alpine/doas.
 if [[ "$RIG_OS" == flatcar && "${ROLE:-}" != kit ]]; then GUEST_USER=core; GUEST_SUDO=sudo; else GUEST_USER=alpine; GUEST_SUDO=doas; fi
 guest_user_for() { case "$1" in kit*) echo alpine ;; *) if [[ "$RIG_OS" == flatcar ]]; then echo core; else echo alpine; fi ;; esac; }
