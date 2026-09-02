@@ -67,6 +67,8 @@ services:
       RAM_MB: ${RIG_APP_RAM_MB:-4096}
       VCPUS: ${RIG_APP_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_APP_MAC:-52:54:00:96:00:0a}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -89,6 +91,8 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_DNS_1_MAC:-52:54:00:96:00:15}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -103,6 +107,8 @@ services:
       RAM_MB: ${RIG_DNS_RAM_MB:-2048}
       VCPUS: ${RIG_DNS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_DNS_2_MAC:-52:54:00:96:00:16}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -117,6 +123,8 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_GW_1_MAC:-52:54:00:96:00:1f}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -131,6 +139,8 @@ services:
       RAM_MB: ${RIG_GW_RAM_MB:-2048}
       VCPUS: ${RIG_GW_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_GW_2_MAC:-52:54:00:96:00:20}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
@@ -145,6 +155,8 @@ services:
       RAM_MB: ${RIG_OBS_RAM_MB:-4096}
       VCPUS: ${RIG_OBS_VCPUS:-2}
       RIG_MODE: "${RIG_MODE:-pull}"
+      RIG_OS: "${RIG_OS:-alpine}"
+      RIG_BOOTSTRAP_CARRIER: "${RIG_BOOTSTRAP_CARRIER:-}"
     mac_address: ${RIG_OBS_1_MAC:-52:54:00:96:00:28}   # inventory MAC — the guest NIC uses it (keep in sync with inventory.env)
     networks:
       rig:
