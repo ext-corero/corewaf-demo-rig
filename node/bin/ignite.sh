@@ -130,6 +130,27 @@ fi
 P9="trans=virtio,version=9p2000.L,cache=none,msize=512000"
 ind() { sed "s/^/$(printf '%*s' "$1" '')/"; }
 
+# Two-phase DNS: boot keeps the public resolver on the link (ECR pulls before
+# coredns exists), then this finalize pins the whole internal namespace
+# (rig.internal + overlay bridges.internal/waf.internal) to the rig DNS plane
+# and drops the public resolver — which otherwise NXDOMAINs overlay names,
+# breaking the GUI's config/logs/WAF-state lookups.
+FIRST_RESOLVER="${RIG_RESOLVERS%% *}"
+FINALIZE="$(cat <<SCRIPT
+#!/usr/bin/env bash
+set -u
+r="$FIRST_RESOLVER"
+for i in \$(seq 1 120); do
+  (exec 3<>/dev/tcp/\$r/53) 2>/dev/null && { exec 3>&-; break; }
+  sleep 3
+done
+f=/etc/systemd/network/05-rig.network
+grep -q '~internal' "\$f" && exit 0
+sed -i '/^DNS=$RIG_BOOTSTRAP_RESOLVER\$/d; s/^Domains=$RIG_DOMAIN\$/Domains=$RIG_DOMAIN ~internal ~./' "\$f"
+networkctl reload
+SCRIPT
+)"
+
 {
 cat <<EOF
 variant: flatcar
@@ -154,6 +175,11 @@ storage:
           MTUBytes=${MTU:-1500}
 
 $NETBLOCK
+    - path: /etc/rig-dns-finalize.sh
+      mode: 0755
+      contents:
+        inline: |
+$(printf '%s\n' "$FINALIZE" | ind 10)
     - path: /etc/corewaf-bootstrap
       mode: 0644
       contents:
@@ -268,6 +294,19 @@ cat <<EOF
             Environment=BOOTSTRAP_ARTIFACTS_REF=${RIG_BOOTSTRAP_ARTIFACTS_REF:-}
     # ECR pull trust: the prod template pins certs.d to the corewaf CA; the rig registry
     # is ECR with public TLS — point certs.d at the full system bundle instead
+    - name: rig-dns-finalize.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Pin .internal to the rig DNS plane once it answers; drop the boot resolver
+        After=network-online.target
+        Wants=network-online.target
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/bash /etc/rig-dns-finalize.sh
+        [Install]
+        WantedBy=multi-user.target
     - name: rig-registry-ca-fix.service
       enabled: true
       contents: |
