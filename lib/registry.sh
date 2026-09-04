@@ -45,11 +45,17 @@ reg_public_images() { sed -n 's/^\([A-Z_]*\)_IMAGE=\([^ ]*:[^ ]*\)$/\2/p' "$(reg
 reg_kit_pull_script() {
     local reg; reg="$(reg_registry)"
     echo 'set -e'
+    # Retry transient pulls, and FAIL LOUDLY if an image cannot be staged — a
+    # swallowed pull leaves the guest half-staged and only surfaces later as a
+    # cryptic enrolment failure (orchestrator can't reach the private image).
+    echo 'pull_retry() { for _ in 1 2 3; do docker pull -q "$1" && return 0; echo "  retry: $1" >&2; sleep 3; done; echo "  FAILED to pull $1" >&2; return 1; }'
     for pair in $(reg_kit_pairs); do
         local src="${pair%%=>*}" dst="${pair##*=>}"
-        echo "docker image inspect '$dst' >/dev/null 2>&1 || { docker pull -q '$reg/$src' && docker tag '$reg/$src' '$dst'; echo \"  $dst  <= $src\"; }"
+        # `&&` all the way through so a failed pull propagates (set -e catches it);
+        # the old trailing `; echo` always succeeded and masked the failure.
+        echo "docker image inspect '$dst' >/dev/null 2>&1 || { pull_retry '$reg/$src' && docker tag '$reg/$src' '$dst' && echo \"  $dst  <= $src\"; }"
     done
     for img in $(reg_kit_public); do
-        echo "docker image inspect '$img' >/dev/null 2>&1 || docker pull -q '$img'"
+        echo "docker image inspect '$img' >/dev/null 2>&1 || pull_retry '$img'"
     done
 }
