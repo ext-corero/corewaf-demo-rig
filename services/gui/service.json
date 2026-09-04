@@ -3,7 +3,7 @@
   "service": {
     "name": "gui",
     "description": "CoreWAF operator GUI (app node).",
-    "sources": { "gui": { "image": "gui", "version": "2.0.25-9d3b80f" } },
+    "sources": { "gui": { "image": "gui", "version": "2.0.26-50df7ee" } },
     "docker": { "projectName": "gui", "networks": [ { "app-rig": "bridge" } ] }
   }
 }

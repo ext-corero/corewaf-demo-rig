@@ -460,6 +460,17 @@ systemd:
             [Unit]
             After=var-lib-docker.mount update-ca-certificates.service
             Requires=var-lib-docker.mount
+        - name: 20-helper-path.conf
+          contents: |
+            [Service]
+            # The ECR credential helper is installed to /opt/bin (the only writable
+            # spot on Flatcar; /usr and /usr/local/bin are read-only). Docker's
+            # credential-helper lookup uses the service PATH, which does NOT include
+            # /opt/bin by default -> `docker-credential-ecr-login: executable file
+            # not found` the first time a pull actually needs the helper (i.e. after
+            # the provision-time token is no longer used, e.g. a later/second-app
+            # deploy). Put /opt/bin on PATH so the helper resolves.
+            Environment=PATH=/opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # Install bootstrap artifacts (CD-ROM or OCI registry) after Docker is ready
     - name: install-bootstrap.service

@@ -139,11 +139,22 @@ FIRST_RESOLVER="${RIG_RESOLVERS%% *}"
 FINALIZE="$(cat <<SCRIPT
 #!/usr/bin/env bash
 set -u
-r="$FIRST_RESOLVER"
-for i in \$(seq 1 120); do
-  (exec 3<>/dev/tcp/\$r/53) 2>/dev/null && { exec 3>&-; break; }
+# Wait until the rig DNS plane (coredns) actually ANSWERS, then pin the internal
+# namespace to it. MUST query coredns DIRECTLY (nslookup @<dns-1>) — getent/glibc
+# resolves dns-1.<zone> from /etc/hosts (the static_hosts entries), so it succeeds
+# even when coredns is DOWN and drops the bootstrap resolver too early -> the node
+# loses public DNS, can't pull from ECR, and the whole rig deadlocks (coredns can
+# never come up). nslookup to the resolver's IP bypasses /etc/hosts and only
+# succeeds once coredns genuinely serves. Poll generously: a gw/peer node often
+# finalizes before dns-1's coredns has finished its own first-boot image pull.
+ok=0
+for i in \$(seq 1 300); do
+  timeout 3 nslookup dns-1.$RIG_DOMAIN $FIRST_RESOLVER >/dev/null 2>&1 && { ok=1; break; }
   sleep 3
 done
+# Keep the bootstrap/public resolver if the plane never came up — never strand
+# the node with no DNS at all (it still needs to resolve ECR to retry pulls).
+[ "\$ok" = 1 ] || exit 0
 f=/etc/systemd/network/05-rig.network
 grep -q '~internal' "\$f" && exit 0
 sed -i '/^DNS=$RIG_BOOTSTRAP_RESOLVER\$/d; s/^Domains=$RIG_DOMAIN\$/Domains=$RIG_DOMAIN ~internal ~./' "\$f"

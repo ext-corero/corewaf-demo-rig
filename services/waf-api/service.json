@@ -4,7 +4,7 @@
   "service": {
     "name": "waf-api",
     "description": "CoreWAF platform API (8 Circus-managed modules, one container).",
-    "sources": { "api": { "image": "api", "version": "0.1.6-0a468c8" } },
+    "sources": { "api": { "image": "api", "version": "0.1.7-32d5cc8" } },
     "docker": { "projectName": "waf-api", "networks": [ { "app-rig": "bridge" } ] }
   }
 }
