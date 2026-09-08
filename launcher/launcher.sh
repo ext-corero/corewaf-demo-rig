@@ -48,7 +48,7 @@ if [[ "${RIG_LAUNCHER_INNER:-0}" != 1 ]]; then
     TTY=""; [[ -t 0 && -t 1 ]] && TTY="-it"
     exec docker run --rm $TTY -v /var/run/docker.sock:/var/run/docker.sock -v "$VOL:$DIR" \
         -e RIG_LAUNCHER_INNER=1 -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
-        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_BOOTSTRAP_CARRIER -e RIG_REDUNDANCY -e RIG_OBS -e RIG_BACKSTAGE -e RIG_JUICE -e LAUNCHER_IMAGE="$IMG" \
+        -e RIG_HTTP_PORT -e RIG_GRAFANA_PORT -e RIG_STEPCA_PORT -e RIG_BACKSTAGE_PORT -e COREWAF_RIG_REF -e TENANT -e RIG_OS -e RIG_LAUNCH -e RIG_BOOTSTRAP_CARRIER -e RIG_REDUNDANCY -e RIG_OBS -e RIG_BACKSTAGE -e RIG_JUICE -e LAUNCHER_IMAGE="$IMG" \
         "$IMG" "$cmd" "$@"
 fi
 ensure_repo() {

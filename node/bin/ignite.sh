@@ -84,6 +84,38 @@ bootstrap="NODE_NAME=$short
 FQDN=$NODE_FQDN
 ZONE=$RIG_DOMAIN
 NODE_IP=$NODE_IP"
+# prod-shape system keys (orchestrator env root; mirrors the template-written
+# NOTE acme_url: the rig writes the full ACME *directory* URL (step-ca on the app
+# node); prod's template writes a base https://acme.<system>.<domain> — reconcile
+# when a real acme. front exists. dns_upstream: public-DNS upstream for coredns.
+# /etc/bootstrap + adds system_ns, which the template does not carry yet). The
+# orchestrator wrapper mounts THIS file at /etc/bootstrap in its container, so
+# bootstrap = system-wide data + per-VM identity, exactly the production model.
+bootstrap+="
+# --- prod-shape system keys (orchestrator env root) ---
+system_name=rig
+system_site=demo
+system_ns=io.corewaf.ghcr/ext-corero/waf
+domain=${RIG_DOMAIN#*.}
+oci_registry=$(reg_host)
+acme_url=https://$RIG_APP_FQDN:9000/acme/acme/directory
+platform_api_url=http://$RIG_APP_FQDN:8080
+stepca_url=https://$RIG_APP_FQDN:9000
+dns_resolvers=$(echo $RIG_RESOLVERS | tr ' ' ',')
+operator_cidrs=$RIG_NET_CIDR
+# root CA cert PATH (guest-visible); a service manifest variable root_ca_cert overrides
+root_ca_cert=/opt/rig-ca/root_ca.crt
+dns_upstream=${RIG_DNS_UPSTREAM:-8.8.8.8}
+# deployment plane: artifacts assembled BY/FOR this deployment (env assets;
+# service bundles at Step 2) home here — sibling of system_ns (code images)
+deployment_ns=io.corewaf.ghcr/deployments/rig-demo
+release=0.0.1
+# caps convenience keys, written VERBATIM by this generator (the orchestrator
+# defines/renames nothing in code — the bootstrap file is the truth)
+CS_DOMAIN=$RIG_DOMAIN
+# platform data namespaces (tenant/etcd scoping)
+namespace=corero-core
+namespaces=[\"corero-core\",\"corero-system\"]"
 if [[ -n "${RIG_HTTP_PORT:-}" ]]; then
     bootstrap+=$'\n'"RIG_HTTP_PORT=$RIG_HTTP_PORT"
     bootstrap+=$'\n'"PUBLIC_API_HOST=app-1.localhost:$RIG_HTTP_PORT"
@@ -97,6 +129,38 @@ if [[ "$ROLE" == gw ]]; then
 fi
 P9="trans=virtio,version=9p2000.L,cache=none,msize=512000"
 ind() { sed "s/^/$(printf '%*s' "$1" '')/"; }
+
+# Two-phase DNS: boot keeps the public resolver on the link (ECR pulls before
+# coredns exists), then this finalize pins the whole internal namespace
+# (rig.internal + overlay bridges.internal/waf.internal) to the rig DNS plane
+# and drops the public resolver — which otherwise NXDOMAINs overlay names,
+# breaking the GUI's config/logs/WAF-state lookups.
+FIRST_RESOLVER="${RIG_RESOLVERS%% *}"
+FINALIZE="$(cat <<SCRIPT
+#!/usr/bin/env bash
+set -u
+# Wait until the rig DNS plane (coredns) actually ANSWERS, then pin the internal
+# namespace to it. MUST query coredns DIRECTLY (nslookup @<dns-1>) — getent/glibc
+# resolves dns-1.<zone> from /etc/hosts (the static_hosts entries), so it succeeds
+# even when coredns is DOWN and drops the bootstrap resolver too early -> the node
+# loses public DNS, can't pull from ECR, and the whole rig deadlocks (coredns can
+# never come up). nslookup to the resolver's IP bypasses /etc/hosts and only
+# succeeds once coredns genuinely serves. Poll generously: a gw/peer node often
+# finalizes before dns-1's coredns has finished its own first-boot image pull.
+ok=0
+for i in \$(seq 1 300); do
+  timeout 3 nslookup dns-1.$RIG_DOMAIN $FIRST_RESOLVER >/dev/null 2>&1 && { ok=1; break; }
+  sleep 3
+done
+# Keep the bootstrap/public resolver if the plane never came up — never strand
+# the node with no DNS at all (it still needs to resolve ECR to retry pulls).
+[ "\$ok" = 1 ] || exit 0
+f=/etc/systemd/network/05-rig.network
+grep -q '~internal' "\$f" && exit 0
+sed -i '/^DNS=$RIG_BOOTSTRAP_RESOLVER\$/d; s/^Domains=$RIG_DOMAIN\$/Domains=$RIG_DOMAIN ~internal ~./' "\$f"
+networkctl reload
+SCRIPT
+)"
 
 {
 cat <<EOF
@@ -122,6 +186,11 @@ storage:
           MTUBytes=${MTU:-1500}
 
 $NETBLOCK
+    - path: /etc/rig-dns-finalize.sh
+      mode: 0755
+      contents:
+        inline: |
+$(printf '%s\n' "$FINALIZE" | ind 10)
     - path: /etc/corewaf-bootstrap
       mode: 0644
       contents:
@@ -236,6 +305,19 @@ cat <<EOF
             Environment=BOOTSTRAP_ARTIFACTS_REF=${RIG_BOOTSTRAP_ARTIFACTS_REF:-}
     # ECR pull trust: the prod template pins certs.d to the corewaf CA; the rig registry
     # is ECR with public TLS — point certs.d at the full system bundle instead
+    - name: rig-dns-finalize.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Pin .internal to the rig DNS plane once it answers; drop the boot resolver
+        After=network-online.target
+        Wants=network-online.target
+        [Service]
+        Type=oneshot
+        RemainAfterExit=true
+        ExecStart=/usr/bin/bash /etc/rig-dns-finalize.sh
+        [Install]
+        WantedBy=multi-user.target
     - name: rig-registry-ca-fix.service
       enabled: true
       contents: |

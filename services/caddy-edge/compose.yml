@@ -1,0 +1,28 @@
+# demo rig — app ingress caddy (app node). Ported from compose/app.yml.
+# HTTP-only ingress; watches labels on the shared app-rig network.
+x-logging: &x-default-logging
+  driver: "json-file"
+  options: { max-size: "10m", max-file: "3" }
+
+networks:
+  app:
+    name: app-rig
+    external: true
+
+volumes:
+  caddy_data:
+
+services:
+  caddy:
+    image: ${IMAGE_CADDY}
+    container_name: rig2-caddy
+    logging: *x-default-logging
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      CADDY_INGRESS_NETWORKS: app-rig
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - caddy_data:/data
+    networks: [ app ]

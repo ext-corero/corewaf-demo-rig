@@ -1,0 +1,9 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "vmsecd",
+    "description": "Secrets-manager (vmsecd, KDBX cold-boot plane); one instance per dns VM.",
+    "sources": { "vmsecd": { "image": "secrets-manager", "version": "3.0.2-ee5ce66" } },
+    "docker": { "projectName": "vmsecd" }
+  }
+}

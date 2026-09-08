@@ -1,0 +1,10 @@
+{
+  "_comment": "demo-rig app node. Upstream image published as a plain variable; becomes a `from` source when CI imports it (Step 2).",
+  "version": "0.0.6",
+  "service": {
+    "name": "etcd",
+    "description": "Platform KV store (app node).",
+    "docker": { "projectName": "etcd", "networks": [ { "app-rig": "bridge" } ] },
+    "variables": { "IMAGE_ETCD": "gcr.io/etcd-development/etcd:v3.5.13" }
+  }
+}

@@ -231,6 +231,76 @@ customer edge hardware.
 - **Caveat:** models 1/2 and model 3 share subnet `192.168.150.0/24` — do not run both on
   one host at the same time.
 
+## Orchestrator launch path (Step 1, `RIG_LAUNCH=orchestrator`)
+
+Branch `feature/orchestrator-v0` adds the first step of the orchestrator
+migration: the same ssh-driven `vm-stack`, but instead of the proprietary
+launch data (`compose/<role>.yml` + `inventory.env`/`images.env`), each guest
+runs the production shape — per-service `service.json` (schema 0.0.6) +
+`compose.yml` under `services/`, consumed by `orchestrator compose up`
+(host-side tooling still reads `inventory.env` for node identity and
+`images.env` for `RIG_ORCHESTRATOR_REF` + host images; `scripts/check-pins.sh`
+asserts the legacy guest pins match the manifests until the flip)
+(the local, unattested verb). Opt-in: `RIG_LAUNCH=orchestrator` (default stays
+the legacy compose path until the flip).
+
+- **Data model**: bootstrap (`/etc/corewaf-bootstrap`, mounted at
+  `/etc/bootstrap` inside the orchestrator container) = system-wide keys +
+  per-VM identity, written by `ignite.sh` (incl. `system_ns`, `root_ca_cert`).
+  Manifests = service/artifact data: `sources` (CoreWAF image pins — THE
+  release knob; edit `sources.<h>.version` to select a release), `variables`
+  (upstream pins, service config; a variable named like a bootstrap key
+  overrides it — e.g. `root_ca_cert`). Production secrets appear as plain
+  variables (`_comment: prod: secrets provider`) — the rig runs no security
+  by design.
+- **Layout**: `services/<svc>/{service.json,compose.yml}`;
+  `services/roles/<role>` = the ordered per-role service list (retires with
+  discovery in Step 3). App node splits by artifact boundary: step-ca, etcd,
+  redis, waf-api, gui, caddy-edge on a shared external `app-rig` network
+  (created idempotently by each manifest; cross-service DNS = compose aliases).
+- **Templates + staging**: instance config is rendered by the orchestrator's
+  template engine (`services/<svc>/templates/*` -> `config/*`, values from
+  `.Env`: bootstrap keys like `acme_url`/`dns_upstream`/`FQDN`, derived
+  `CS_DOMAIN`, manifest variables). Because `/opt/v2` is read-only, `vm-stack`
+  stages each service dir host-side onto the nodestate share — the guest sees
+  it rw at `/opt/rig-state/services/<svc>`, and rendered files are inspectable
+  host-side (model 3: `.qemu/state/<n>/share/services/...`). Fresh copy every
+  run. This mirrors "as unarchived from the OCI registry": Step 2 swaps the
+  copy for the bundle pull, nothing else moves.
+- **DNS seed = environment asset**: `services/dns/service.json` declares the
+  `dns-seed` asset (volume mounted ro at `/seed`). `compose up` skips asset
+  staging by design (attested-run-only) — vm-stack fills the volume from
+  `seed/rig.internal.zone`; Step 2's `run` pulls the real `zone-<zone>-seed`
+  artifact that production Terraform already publishes.
+- **Quick-dev**: build an image locally, then drop a git-ignored
+  `services/<svc>/compose.override.yml`:
+  `services: { waf-api: { image: corewaf/waf-api:dev, pull_policy: never } }`
+  — compose auto-discovers it and `docker compose pull` skips the local-only
+  tag (verified with the shipped compose v2.27.0). Remove the file to return
+  to the manifest pin. `RIG_MODE=source` stays a legacy-path feature.
+- **Flip caveats (warm rig)**: fresh compose projects mean fresh volumes —
+  etcd state (and the demo data) resets: run `rig seed` after the first
+  orchestrator bring-up. Flip ALL nodes before seeding (a still-running
+  legacy gateway re-registers into the fresh etcd and the new gateway then
+  refuses the name; the same happens to dns-bridges and secrets-managers —
+  recovery: `etcdctl del --prefix /corero-core/system/<kind>/` (tunnel-gateways,
+  dns-bridges/<stale-id>, secrets-managers) on the app node's etcd; each
+  service re-registers within its retry loop, ~15-45s).
+  Re-enrol kits afterwards with a FULL purge first (`docker ps -aq --filter
+  name=corewaf- | xargs docker rm -f` + `rm -rf /var/lib/tunnel/*` — the
+  netns container holds old wg routes); the rejoin lands in the designed
+  ZTK-quarantine flow (operator clearance in the GUI).
+- **Demo data is NOT the rig's**: it lives in `waf/api/demo/` and is owned +
+  versioned by the API (ships inside the waf-api image at `/app/demo` — see
+  `waf/api/demo/README.md`). `rig seed` only invokes it in the running
+  container, always through the platform HTTP API; the rig carries no demo
+  data and nothing writes etcd directly.
+- Orchestrator omissions found during this work are logged in
+  `corewaf-workspace/orchestrator/docs/rig-homologation-findings.md`.
+- Step 2: CI publishes per-service OCI bundles; `run --artifact-ref` replaces
+  `compose up` (attestation turns on). Step 3: discovery/loader; the roles
+  files and the ssh loop retire.
+
 ## Roadmap — the three demo tracks
 
 Now that the rig runs the production OS/provisioning stack on all three models, the

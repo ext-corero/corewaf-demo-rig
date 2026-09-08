@@ -1,0 +1,19 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "dns",
+    "description": "Rig resolver stack (per dns VM): redis + coredns + dns-bridge.",
+    "sources": {
+      "coredns":    { "image": "coredns-redis", "version": "0.2.1-9c45d13" },
+      "dns-bridge": { "image": "dns-bridge",    "version": "0.2.1-9c45d13" }
+    },
+    "docker": { "projectName": "dns", "volumes": [ { "dns-seed": "keep" } ] },
+    "_comment_assets": "dns-seed = the bootstrap zone artifact. The ref is the COMPLETE sequence, authored here as data (every ${var} is a verbatim bootstrap key) — the orchestrator composes nothing; the loader may equally supply such a ref from discovery. compose-up (dev) skips asset staging by design — vm-stack fills the volume from seed/; Step 2's attested run pulls the artifact. Volume stays keep until that run refills it (recreate would wipe the dev fill).",
+    "assets": { "dns-seed": { "ref": "${oci_registry}/${deployment_ns}/zone-${CS_DOMAIN}-seed:${release}" } },
+    "templates": [
+      { "source": "templates/Corefile", "destination": "config/Corefile", "overwrite": true }
+    ],
+    "files": [ "service.json", "compose.yml", "templates/Corefile" ],
+    "variables": { "IMAGE_REDIS": "redis:7-alpine" }
+  }
+}

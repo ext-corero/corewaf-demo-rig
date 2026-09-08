@@ -3,11 +3,11 @@ kind: Component
 metadata:
   name: corewaf-demo-rig
   title: CoreWAF Demo Rig
-  description: Multi-VM libvirt demo/test rig for the CoreWAF platform, pulling published images from the CoreWAF registry.
+  description: Multi-VM demo/test rig (QEMU-in-container or pure-QEMU/libvirt) for the CoreWAF platform, pulling published images from the CoreWAF registry.
   annotations:
     github.com/project-slug: ext-corero/corewaf-demo-rig
     backstage.io/techdocs-ref: dir:.
-  tags: [demo, libvirt, rig]
+  tags: [demo, rig, qemu]
 spec:
   type: tool
   lifecycle: experimental

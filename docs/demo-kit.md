@@ -56,7 +56,7 @@ images). The VM is left running and **not enrolled**; it survives
    healthy (~1 min; prints the `/redeem` and `foundation tier ready` lines).
    Host-side alternative, same result: `task demo:enrol TOKEN=<TOKEN>`.
 3. **Show it** — GUI → WAF instances → Pending; `task demo:instances` shows
-   phase + heartbeat age; `task exec ROLE=gw N=1 CMD='doas wg show'` shows
+   phase + heartbeat age; `task exec NODE=gw-1 C=rig2-tunnel-gateway CMD='wg show'` shows
    the peer.
 
 ### Why `corewaf-demo-up` exists
@@ -87,7 +87,7 @@ otherwise the next heartbeat re-registers it.
 | tunnel log `pkcs11: PIN required` | `corewaf-demo-up` not run (override missing) |
 | tunnel log `x509`/TLS error on `/redeem` | `runtime/operator-ca.crt` missing/wrong — run `corewaf-demo-up` |
 | `/reconnect … remote error: tls: expired certificate` | kit's client cert expired (VM was off for weeks) → re-enrol |
-| `task verify`: edge `https://gw-N.rig.internal/health` red | edge server cert expired → `task exec ROLE=gw N=<n> CMD='doas docker restart rig2-tunnel-caddy-edge'` |
+| `task verify`: edge `https://gw-N.rig.internal/health` red | edge server cert expired → `task ssh NODE=gw-<n> CMD='sudo docker restart rig2-tunnel-caddy-edge'` |
 | `task verify`: "guest egress" red | Docker NAT for the `corewaf-rig` network; check `docker network inspect corewaf-rig` and the host firewall |
 | kit can't resolve `gw-1.rig.internal` | guest resolv.conf comes from the seed; `task demo:reset` recreates the VM |
 | GUI badge "Heartbeat slow" | lastSeen 90 s–5 min old: a kit whose VM is gone (delete the row), or the browser tab was backgrounded (the list only polls while visible) |

@@ -1,0 +1,9 @@
+{
+  "version": "0.0.6",
+  "service": {
+    "name": "redis",
+    "description": "Platform cache/queue (app node).",
+    "docker": { "projectName": "redis", "networks": [ { "app-rig": "bridge" } ] },
+    "variables": { "IMAGE_REDIS": "redis:7-alpine" }
+  }
+}

@@ -1,6 +1,7 @@
-# rig-node — the hypervisor container: boots ONE rig VM (QEMU/KVM) from the
-# shared Alpine base image, bridges it onto the rig docker network with its own
-# IP/MAC, feeds it a NoCloud seed, exposes its serial console as container logs,
+# rig-node — the hypervisor container: boots ONE rig VM (QEMU/KVM) — Flatcar
+# via Ignition for infra roles, the shared Alpine base + NoCloud seed for kits —
+# bridges it onto the rig docker network with its own IP/MAC, exposes its
+# serial console as container logs,
 # and starts the role's docker stack inside the guest over ssh. Also runs the
 # one-shot `rig-init` (base image pull, CA, secrets, keys) and the `cli` tools.
 FROM alpine:3.23
