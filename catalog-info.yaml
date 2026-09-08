@@ -11,5 +11,5 @@ metadata:
 spec:
   type: tool
   lifecycle: experimental
-  owner: group:corewaf
+  owner: group:default/platform-team
   system: corewaf-foundation

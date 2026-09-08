@@ -1,0 +1,28 @@
+site_name: CoreWAF — Demo Rig
+
+docs_dir: .
+
+nav:
+  - Home: README.md
+  - Demo Kit: docs/demo-kit.md
+  - Windows Host: docs/windows.md
+
+# docs_dir is the repo root, so everything not in the nav is excluded
+# explicitly — otherwise mkdocs ingests vendored and agent-facing files.
+exclude_docs: |
+  .venv/
+  node_modules/
+  CLAUDE.md
+  **/CLAUDE.md
+
+plugins:
+  - techdocs-core
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
