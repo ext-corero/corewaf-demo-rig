@@ -133,6 +133,12 @@ services:
       # Live logs: opt-in second source — tail the edge Caddy container
       # (needs the docker socket mount below). Default deployments unset this.
       TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
+      # Belt-and-suspender for the cold-boot edge L4 arming race: after its own
+      # boot the gateway execs ONE Caddy admin config reload inside this edge
+      # container (over the docker socket below — the edge admin API is
+      # loopback-bound), re-provisioning the layer4 :443 SNI router so a fresh
+      # kit's tls-alpn-01 bridge-cert challenge routes instead of FINning.
+      TUNNELGW_EDGE_CADDY_RELOAD_CONTAINER: rig2-tunnel-caddy-edge
       TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
       TUNNELGW_APPROVED_INGRESS_CIDRS: "192.168.150.0/24"
       TUNNELGW_INGRESS_BRIDGE_PORT: "443"

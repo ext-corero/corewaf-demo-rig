@@ -96,6 +96,11 @@ services:
       TUNNELGW_WG_ADVERTISED_ENDPOINT: "${FQDN}:51820"
       TUNNELGW_DNS_FORWARD_ZONE: ${TUNNEL_ZONE}
       TG_CADDY_LOG_CONTAINER: rig2-tunnel-caddy-edge
+      # Belt-and-suspender for the cold-boot edge L4 arming race: after boot the
+      # gateway execs ONE Caddy admin config reload inside this edge container
+      # (over the docker socket below — the edge admin is loopback-bound), so a
+      # fresh kit's tls-alpn-01 bridge-cert challenge routes instead of FINning.
+      TUNNELGW_EDGE_CADDY_RELOAD_CONTAINER: rig2-tunnel-caddy-edge
       TUNNELGW_DNS_REVERSE_ZONE: 64.100.in-addr.arpa
       TUNNELGW_APPROVED_INGRESS_CIDRS: "${operator_cidrs}"
       TUNNELGW_INGRESS_BRIDGE_PORT: "443"
