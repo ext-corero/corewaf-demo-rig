@@ -1,5 +1,6 @@
 # launcher-image — build the rig-launcher image (zero-install `docker run` entry point)
-# and publish it to the CoreWAF registry (ECR): <ECR>/io.corewaf.ghcr/rig/launcher:<sha> (+latest)
+# and publish it to the CoreWAF registry (ECR):
+#   <ECR>/io.corewaf.ghcr/rig/launcher:<major.minor.N>[-<sha>] (+latest)
 name: launcher-image
 on:
   push:
@@ -17,8 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - id: ver
-        run: echo "tag=3.23-$(git log -1 --format=%h -- launcher)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - name: Configure AWS credentials (ECR)
         uses: aws-actions/configure-aws-credentials@v4
@@ -29,13 +28,26 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
       - name: Ensure ECR repository
         run: aws ecr describe-repositories --repository-names io.corewaf.ghcr/rig/launcher >/dev/null 2>&1 || aws ecr create-repository --repository-name io.corewaf.ghcr/rig/launcher --image-scanning-configuration scanOnPush=true >/dev/null
+      - id: ver
+        run: |
+          # Canonical scheme: launcher/VERSION holds major.minor; the patch N is
+          # the next build number. The launcher is ECR-only, so we count from ECR
+          # directly rather than the shared next-version scripts (GHCR/secman).
+          REPO=io.corewaf.ghcr/rig/launcher
+          BASE=$(tr -d ' \n' < launcher/VERSION)
+          N=$(aws ecr list-images --repository-name "$REPO" --query 'imageIds[].imageTag' --output text 2>/dev/null \
+                | tr '\t' '\n' | grep -E "^${BASE//./\\.}\.[0-9]+(-|$)" \
+                | sed -E 's/^[0-9]+\.[0-9]+\.([0-9]+).*/\1/' | sort -n | tail -1)
+          echo "version=${BASE}.$(( ${N:--1} + 1 ))"       >> "$GITHUB_OUTPUT"
+          echo "sha=$(git log -1 --format=%h -- launcher)"  >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v5
         if: ${{ github.event.inputs.retag_version == '' || github.event.inputs.retag_version == null }}
         with:
           context: ./launcher
           push: true
           tags: |
-            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:${{ steps.ver.outputs.tag }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:${{ steps.ver.outputs.version }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.sha }}
             ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -46,4 +58,4 @@ jobs:
           docker buildx imagetools create -t "$L:stable" -t "$L:${{ github.event.inputs.retag_version }}" "$L:latest"
           echo "retagged $L:latest -> :stable, :${{ github.event.inputs.retag_version }}"
       - run: |
-          { echo "### rig-launcher published"; echo '```'; echo "RIG_LAUNCHER_IMAGE=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:${{ steps.ver.outputs.tag }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### rig-launcher published"; echo '```'; echo "RIG_LAUNCHER_IMAGE=${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/launcher:${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.sha }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

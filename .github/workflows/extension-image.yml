@@ -1,7 +1,7 @@
 # extension-image — build the Docker Desktop extension (UI + host helper) and publish it
 #   ghcr.io/ext-corero/corewaf-demo-rig/extension:<semver> (+latest)   ← public, no login to install
 #   <ECR>/io.corewaf.ghcr/rig/extension:<semver> (+latest)             ← twin
-# Version = extension/VERSION (Docker Desktop requires a semver tag).
+# Version = next-version-ghcr.sh (major.minor from extension/VERSION + build N).
 name: extension-image
 on:
   push:
@@ -26,7 +26,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: ver
-        run: echo "tag=$(tr -d ' \n' < extension/VERSION)" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Canonical scheme: VERSION holds major.minor; next-version-ghcr.sh
+          # returns major.minor.N for :latest (dev). A stable release passes the
+          # exact version; images use plain semver (the `v` prefix lives only on
+          # git tags), so strip a leading v.
+          channel="${{ github.event.inputs.channel || 'latest' }}"
+          if [ "$channel" = "stable" ] && [ -n "${{ github.event.inputs.version }}" ]; then
+            ver="${{ github.event.inputs.version }}"; ver="${ver#v}"
+          else
+            ver="$(bash cicd/scripts/next-version-ghcr.sh ${{ github.repository }}/extension extension/VERSION)"
+          fi
+          echo "version=$ver"                  >> "$GITHUB_OUTPUT"
+          echo "sha=$(git log -1 --format=%h)" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel"              >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -49,15 +64,17 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ steps.ver.outputs.tag }}
-            CHANNEL=${{ github.event.inputs.channel || 'latest' }}
+            VERSION=${{ steps.ver.outputs.version }}
+            CHANNEL=${{ steps.ver.outputs.channel }}
           tags: |
-            ghcr.io/${{ github.repository }}/extension:${{ (github.event.inputs.channel == 'stable' && github.event.inputs.version != '') && github.event.inputs.version || steps.ver.outputs.tag }}
-            ghcr.io/${{ github.repository }}/extension:${{ github.event.inputs.channel == 'stable' && 'stable' || 'latest' }}
-            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.tag }}
-            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:latest
+            ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.version }}
+            ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.sha }}
+            ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.channel }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.version }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.version }}-${{ steps.ver.outputs.sha }}
+            ${{ vars.ECR_REGISTRY }}/io.corewaf.ghcr/rig/extension:${{ steps.ver.outputs.channel }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: |
           { echo "### Docker Desktop extension published"; echo '```'
-            echo "docker extension install ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.tag }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            echo "docker extension install ghcr.io/${{ github.repository }}/extension:${{ steps.ver.outputs.version }}"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

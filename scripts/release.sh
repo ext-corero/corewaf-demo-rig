@@ -19,6 +19,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 MODE=cut; [[ "${1:-}" == "--patch" ]] && { MODE=patch; shift; }
 VER="${1:?usage: release.sh [--patch] vX.Y.Z}"
 [[ "$VER" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must look like v1.2.3"
+IMG_VER="${VER#v}"   # images/extension use plain semver; the `v` prefix lives only on git tags/GH releases
 git diff --quiet && git diff --cached --quiet || die "working tree not clean"
 git fetch -q origin main stable --tags 2>/dev/null || git fetch -q origin main --tags
 
@@ -46,15 +47,15 @@ git push -q origin "$VER"
 echo "git: stable -> $(git rev-parse --short HEAD), tag $VER"
 
 # launcher: retag the digest currently behind :latest — in CI, which holds push creds
-gh workflow run launcher-image.yml -f retag_version="$VER"
-echo "launcher: dispatched retag of :latest -> :stable, :$VER (gh run watch to follow)"
+gh workflow run launcher-image.yml -f retag_version="$IMG_VER"
+echo "launcher: dispatched retag of :latest -> :stable, :$IMG_VER (gh run watch to follow)"
 
 # extension: stable-channel build via workflow dispatch
-gh workflow run extension-image.yml -f channel=stable -f version="$VER"
+gh workflow run extension-image.yml -f channel=stable -f version="$IMG_VER"
 echo "extension: dispatched stable build (gh run watch to follow)"
 
 gh release create "$VER" --target stable --title "demo rig $VER" \
-  --notes "Stable channel release. Entry points: bootstrap (stable branch URL), launcher :stable / :$VER, extension :stable / :$VER. All rig images pinned by images.env at tag $VER." \
+  --notes "Stable channel release. Entry points: bootstrap (stable branch URL), launcher :stable / :$IMG_VER, extension :stable / :$IMG_VER. All rig images pinned by images.env at tag $VER." \
   2>/dev/null || echo "note: gh release create skipped/failed (may exist)"
 git checkout -q main
 echo "done — back on main"
